@@ -1,232 +1,176 @@
 # SnapMemoria
 
-SnapMemoria is a local application for browsing exported Snapchat Memories more comfortably than directly opening files from a USB drive.
+> A local-first app for rediscovering exported Snapchat Memories.
 
-The application is designed for large Snapchat exports containing many photos, videos, and overlays spread across folders such as `memories`, `memories 2`, and `memories 3`.
+SnapMemoria helps you browse large Snapchat Memories exports without manually navigating thousands of files on a USB drive.
 
-It will progressively provide:
+It indexes your exported photos, videos, and Snapchat overlays locally, then provides a faster way to explore them by year, month, and flashback date.
 
-* A gallery grouped by year and month
-* Photo and video previews
-* Snapchat overlay support
-* “On this day” flashbacks from previous years
-* Fast navigation through a local database index
-* A local-first setup that keeps original memories on the USB drive
+## Features
 
-## Privacy
+* Browse Memories by year and month
+* View photos and videos in a full-screen viewer
+* Display Snapchat overlays without modifying original files
+* Generate cached thumbnails for images and videos
+* Rediscover Memories through “On this day” flashbacks
+* Manage multiple export sources from the Settings page
+* Scan large folders in the background with live progress
+* Keep original files on your USB drive or local folder
+* Store only metadata, indexes, and thumbnail cache locally
 
-SnapMemoria is designed to run locally on your computer.
+## Privacy first
 
-Your original Snapchat files are never copied into the Git repository. The application only stores local metadata and, later, cached thumbnails on your computer.
+SnapMemoria is designed to be local-first.
 
-By default, the server runs on `127.0.0.1`, which means it is accessible only from the same computer.
+* Your original Snapchat files stay where they are.
+* Your media is not uploaded to a cloud service.
+* The application runs on your computer by default.
+* Local paths, SQLite databases, thumbnails, and personal exports should never be committed to Git.
 
-## Current features
+## Getting started
 
-The current version supports:
+### Requirements
 
-* Registering one or more Snapchat Memories folders
-* Listing configured folders
-* Scanning a configured folder recursively
-* Counting supported Snapchat media files:
+* Java 21 or later
+* Node.js 22 or later
+* npm
+* FFmpeg for video thumbnails
 
-    * Main images: `-main.jpg` and `-main.jpeg`
-    * Main videos: `-main.mp4` and `-main.mov`
-    * Overlays: `-overlay.png`
-
-The application does not yet save individual Memories in the database. The current scan is only used to validate that the folder structure is detected correctly.
-
-## Requirements
-
-* Java 21
-* Maven Wrapper included in the project
-* A Snapchat Memories export folder
-
-Example export structure:
-
-```text
-snapchat-memories/
-├── memories/
-│   ├── 2019-10-05_493C7A65-6059-48C0-81F1-9A7D3E068856-main.jpg
-│   ├── 2019-10-05_493C7A65-6059-48C0-81F1-9A7D3E068856-overlay.png
-│   └── ...
-├── memories 2/
-├── memories 3/
-└── ...
-```
-
-When adding a source, select the parent `snapchat-memories` folder rather than an individual `memories` folder. The scanner automatically includes all subfolders.
-
-## Running the application
-
-Create the local SQLite data directory once:
-
-```bash
-mkdir -p ~/.snapmemoria/data
-```
-
-Start the application from the project root:
+### Run the backend
 
 ```bash
 ./mvnw spring-boot:run
 ```
 
-Check that the application is running:
-
-```bash
-curl http://localhost:8080/actuator/health
-```
-
-Expected response:
-
-```json
-{"status":"UP"}
-```
-
-## Configuring a Memories source
-
-A source is the folder that contains the exported Snapchat Memories files.
-
-### List configured sources
-
-```bash
-curl http://localhost:8080/api/sources
-```
-
-When no source has been registered yet, the response is:
-
-```json
-[]
-```
-
-### Add a source
-
-Replace the example path with the actual path of your export folder.
-
-```bash
-curl -X POST http://localhost:8080/api/sources \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Snapchat Memories USB",
-    "rootPath": "/Volumes/MY_USB/snapchat-memories"
-  }'
-```
-
-Example response:
-
-```json
-{
-  "id": "example-source-id",
-  "name": "Snapchat Memories USB",
-  "rootPath": "/Volumes/MY_USB/snapchat-memories",
-  "lastScanAt": null,
-  "lastScanStatus": "NOT_SCANNED",
-  "createdAt": "2026-07-01T10:00:00Z",
-  "updatedAt": "2026-07-01T10:00:00Z"
-}
-```
-
-On macOS, external USB drives are usually mounted under:
+The backend starts on:
 
 ```text
-/Volumes/DRIVE_NAME/
+http://127.0.0.1:8080
 ```
 
-You can check available drives with:
+You can verify it with:
 
 ```bash
-ls /Volumes
+curl http://127.0.0.1:8080/actuator/health
 ```
 
-### Scan a source
+### Run the frontend
 
-First, retrieve the source ID:
+In a second terminal:
 
 ```bash
-curl http://localhost:8080/api/sources
+cd frontend
+npm install
+npm run dev
 ```
 
-Then start a scan:
-
-```bash
-curl -X POST http://localhost:8080/api/sources/SOURCE_ID/scan
-```
-
-Example response:
-
-```json
-{
-  "sourceId": "example-source-id",
-  "sourcePath": "/Volumes/MY_USB/snapchat-memories",
-  "status": "COMPLETED",
-  "filesVisited": 15482,
-  "mainImages": 7194,
-  "mainVideos": 7821,
-  "overlays": 467,
-  "unsupportedFiles": 0,
-  "startedAt": "2026-07-01T10:00:00Z",
-  "completedAt": "2026-07-01T10:00:04Z"
-}
-```
-
-### Change a source path
-
-The current API does not update a source path directly.
-
-To change the location of a Memories export:
-
-1. List the configured sources.
-2. Delete the old source.
-3. Add the new source with the correct path.
-4. Run a new scan.
-
-Delete a source:
-
-```bash
-curl -X DELETE http://localhost:8080/api/sources/SOURCE_ID
-```
-
-Then add the replacement source:
-
-```bash
-curl -X POST http://localhost:8080/api/sources \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Snapchat Memories USB",
-    "rootPath": "/Volumes/NEW_USB_NAME/snapchat-memories"
-  }'
-```
-
-## Local data
-
-The SQLite database is stored outside the repository:
+Then open:
 
 ```text
-~/.snapmemoria/data/snapmemoria.db
+http://localhost:5173
 ```
 
-This file contains application data such as configured sources and Flyway migration history.
+### Add your Snapchat export
 
-Do not commit this database file to Git.
+1. Open **Settings** in the application.
+2. Add the parent folder containing your Snapchat export.
+3. Select the folder that contains directories such as:
 
-## Development roadmap
+```text
+snapchat-memories/
+├── memories/
+├── memories 2/
+├── memories 3/
+└── ...
+```
 
-### Completed
+4. Start a scan.
+5. Browse your archive through the timeline.
 
-* Spring Boot application setup
-* SQLite configuration
-* Flyway setup
-* Memory source management
-* Recursive folder scan and media classification
+Do not select an individual `memories` folder when your export contains multiple folders. Select the parent `snapchat-memories` folder instead.
 
-### Next steps
+## Development
 
-* Store scanned Memories in SQLite
-* Parse the Snapchat filename format
-* Link main files with overlays
-* Add a gallery API with pagination
-* Generate cached thumbnails
-* Add year and month navigation
-* Add flashbacks such as “1 year ago today”
-* Build a React interface
-* Package the application for local deployment
+Run all local quality checks:
+
+```bash
+npm run verify
+```
+
+The build compiles the backend with Java 21 compatibility. If you have several JDKs installed, any active `JAVA_HOME` pointing to Java 21 or later is accepted.
+
+This validates:
+
+* Java formatting with Spotless
+* Frontend formatting with Prettier
+* ESLint checks
+* Backend tests
+* Frontend tests
+* Backend build
+* Frontend production build
+
+Format the complete project:
+
+```bash
+npm run format
+```
+
+For technical architecture, development workflow, testing, and contribution guidance, see:
+
+* [Technical contribution guide](docs/technical-contribution-guide.md)
+* [Contributing guide](docs/CONTRIBUTING.md)
+
+## Contributing
+
+Contributions, ideas, bug reports, and feature requests are welcome.
+
+Before opening a pull request:
+
+1. Create a focused branch.
+2. Follow Conventional Commit messages.
+3. Run `npm run verify`.
+4. Do not include personal Memories, local databases, cached thumbnails, or private paths in your changes.
+
+Useful branch names:
+
+```text
+feature/favorites
+fix/video-thumbnail-error
+refactor/memory-scanner
+test/flashback-api
+docs/setup-guide
+```
+
+## Support the project
+
+SnapMemoria is built as an open-source project.
+
+If it helps you rediscover meaningful memories, consider supporting its development:
+
+[☕ Buy me a coffee](https://buymeacoffee.com/cnoupoue)
+
+You can also support the project by:
+
+* Starring the repository
+* Sharing it with people who export Snapchat Memories
+* Opening an issue for bugs or ideas
+* Contributing code, tests, or documentation
+
+## Roadmap
+
+Planned improvements include:
+
+* Favorites and collections
+* Advanced filters for photos, videos, overlays, and dates
+* Previous and next navigation in the viewer
+* Better source availability detection
+* Thumbnail cache invalidation
+* Backup and restore for the local index
+* Desktop packaging for macOS and Windows
+* Optional local network deployment with authentication
+
+## License
+
+This project is intended to be released under an open-source license.
+
+Choose and add a license file before publishing publicly. The MIT License is a simple option for a permissive open-source project.
