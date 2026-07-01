@@ -152,6 +152,119 @@ button {
   font-size: 0.9rem;
 }
 
+.onboarding-page {
+  display: grid;
+  gap: 24px;
+  align-content: start;
+}
+
+.onboarding-hero {
+  max-width: 860px;
+}
+
+.onboarding-hero h2 {
+  max-width: 720px;
+  margin: 0;
+  font-size: clamp(2.2rem, 5vw, 4.6rem);
+  line-height: 0.95;
+}
+
+.onboarding-lede {
+  max-width: 760px;
+  margin: 18px 0 0;
+  color: #4c4c4c;
+  font-size: 1.08rem;
+  line-height: 1.55;
+}
+
+.privacy-note {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  width: fit-content;
+  margin-top: 20px;
+  padding: 10px 12px;
+  color: #17653d;
+  background: #e3f6eb;
+  border: 1px solid #c9ebd5;
+  border-radius: 8px;
+}
+
+.onboarding-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 24px;
+}
+
+.onboarding-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(300px, 0.9fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.onboarding-panel,
+.folder-example-panel,
+.onboarding-help {
+  padding: 22px;
+  background: white;
+  border: 1px solid #e7e7e7;
+  border-radius: 14px;
+}
+
+.onboarding-steps {
+  display: grid;
+  gap: 18px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.onboarding-steps li {
+  display: grid;
+  gap: 5px;
+}
+
+.onboarding-steps span {
+  color: #777;
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.onboarding-steps p,
+.folder-example-panel p,
+.onboarding-help p {
+  margin: 0;
+  color: #5f5f5f;
+  line-height: 1.5;
+}
+
+.folder-tree {
+  overflow: auto;
+  padding: 16px;
+  margin: 0 0 16px;
+  color: #252525;
+  background: #f7f7f7;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.archive-empty-state {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.archive-empty-state strong {
+  color: #222;
+  font-size: 1.05rem;
+}
+
 .memory-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
@@ -741,6 +854,10 @@ button {
 
   .content {
     padding: 26px 20px;
+  }
+
+  .onboarding-grid {
+    grid-template-columns: 1fr;
   }
 
   .content-header {

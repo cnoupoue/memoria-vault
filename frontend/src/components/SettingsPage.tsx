@@ -78,10 +78,16 @@ function getSourceStateLabel(
 }
 
 type SettingsPageProps = {
+  autoFocusSourceForm?: boolean;
+  onSourceCreated?: (source: MemorySource) => void;
   onSourceScanned: () => void;
 };
 
-export function SettingsPage({ onSourceScanned }: SettingsPageProps) {
+export function SettingsPage({
+  autoFocusSourceForm = false,
+  onSourceCreated,
+  onSourceScanned,
+}: SettingsPageProps) {
   const [sources, setSources] = useState<MemorySource[]>([]);
   const [name, setName] = useState('');
   const [rootPath, setRootPath] = useState('');
@@ -94,9 +100,11 @@ export function SettingsPage({ onSourceScanned }: SettingsPageProps) {
     useState<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [scanJob, setScanJob] = useState<MemoryScanJob | null>(null);
 
   const pollingIntervalRef = useRef<number | null>(null);
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
 
   const loadSources = useCallback(async () => {
     try {
@@ -172,6 +180,12 @@ export function SettingsPage({ onSourceScanned }: SettingsPageProps) {
   }, [stopPolling]);
 
   useEffect(() => {
+    if (autoFocusSourceForm) {
+      nameInputRef.current?.focus();
+    }
+  }, [autoFocusSourceForm]);
+
+  useEffect(() => {
     let isMounted = true;
 
     void (async () => {
@@ -202,6 +216,7 @@ export function SettingsPage({ onSourceScanned }: SettingsPageProps) {
   function handleRefreshSources() {
     setIsLoading(true);
     setError(null);
+    setSuccessMessage(null);
     void loadSources();
   }
 
@@ -260,6 +275,7 @@ export function SettingsPage({ onSourceScanned }: SettingsPageProps) {
 
     setIsCreating(true);
     setError(null);
+    setSuccessMessage(null);
     setScanJob(null);
 
     try {
@@ -269,6 +285,10 @@ export function SettingsPage({ onSourceScanned }: SettingsPageProps) {
       });
 
       setSources((currentSources) => [...currentSources, createdSource]);
+      setSuccessMessage(
+        'Your source was added. Start scanning to index your Memories locally.',
+      );
+      onSourceCreated?.(createdSource);
 
       setName('');
       setRootPath('');
@@ -294,6 +314,7 @@ export function SettingsPage({ onSourceScanned }: SettingsPageProps) {
 
   async function handleScan(source: MemorySource) {
     setError(null);
+    setSuccessMessage(null);
     setScanJob(null);
 
     try {
@@ -325,6 +346,7 @@ export function SettingsPage({ onSourceScanned }: SettingsPageProps) {
 
     setDeletingSourceId(source.id);
     setError(null);
+    setSuccessMessage(null);
     setScanJob(null);
 
     try {
@@ -350,6 +372,12 @@ export function SettingsPage({ onSourceScanned }: SettingsPageProps) {
       </header>
 
       {error && <div className="error-banner">{error}</div>}
+      {successMessage && (
+        <div className="scan-result-banner">
+          <strong>Your source was added.</strong>
+          <span>Start scanning to index your Memories locally.</span>
+        </div>
+      )}
 
       {scanJob && (
         <div className="scan-result-banner">
@@ -410,6 +438,7 @@ export function SettingsPage({ onSourceScanned }: SettingsPageProps) {
           <label>
             Source name
             <input
+              ref={nameInputRef}
               onChange={(event) => setName(event.target.value)}
               placeholder="Snapchat Memories USB"
               value={name}

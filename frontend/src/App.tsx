@@ -1,18 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { MemoryViewer } from './components/MemoryViewer';
 import {
   getMemories,
   getMemoryDetail,
+  getMemorySources,
   getTimelineMonths,
   getTimelineYears,
 } from './api/snapmemoriaApi';
 import type {
   Memory,
   MemoryDetail,
+  MemorySource,
   TimelineMonth,
   TimelineYear,
 } from './api/types';
 import { FlashbacksPage } from './components/FlashbacksPage';
+import { OnboardingPage } from './components/OnboardingPage';
 import { SettingsPage } from './components/SettingsPage';
 
 const PAGE_SIZE = 48;
@@ -57,6 +60,9 @@ function App() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
+  const [sources, setSources] = useState<MemorySource[]>([]);
+  const [isLoadingSources, setIsLoadingSources] = useState(true);
+  const [sourceLoadError, setSourceLoadError] = useState<string | null>(null);
 
   const [selectedMemory, setSelectedMemory] = useState<MemoryDetail | null>(
     null,
@@ -71,6 +77,7 @@ function App() {
   >('archive');
 
   const [archiveRefreshVersion, setArchiveRefreshVersion] = useState(0);
+  const [shouldFocusSourceForm, setShouldFocusSourceForm] = useState(false);
 
   /*
    * Prevents an older response from replacing newer results
@@ -78,8 +85,61 @@ function App() {
    */
   const memoryRequestVersion = useRef(0);
 
+  const loadSources = useCallback(async () => {
+    setIsLoadingSources(true);
+    setSourceLoadError(null);
+
+    try {
+      const data = await getMemorySources();
+      setSources(data);
+    } catch {
+      setSourceLoadError(
+        'Could not load setup status. Check that the backend is running.',
+      );
+    } finally {
+      setIsLoadingSources(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    void (async () => {
+      try {
+        const data = await getMemorySources();
+
+        if (isMounted) {
+          setSources(data);
+        }
+      } catch {
+        if (isMounted) {
+          setSourceLoadError(
+            'Could not load setup status. Check that the backend is running.',
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingSources(false);
+        }
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const hasConfiguredSources = sources.length > 0;
+
   useEffect(() => {
     async function loadYears() {
+      if (isLoadingSources || !hasConfiguredSources) {
+        setYears([]);
+        setSelectedYear(undefined);
+        setMonths([]);
+        return;
+      }
+
       setIsLoadingYears(true);
 
       try {
@@ -106,11 +166,11 @@ function App() {
     }
 
     void loadYears();
-  }, [archiveRefreshVersion]);
+  }, [archiveRefreshVersion, hasConfiguredSources, isLoadingSources]);
 
   useEffect(() => {
     async function loadMonths() {
-      if (selectedYear === undefined) {
+      if (!hasConfiguredSources || selectedYear === undefined) {
         setMonths([]);
         return;
       }
@@ -124,10 +184,19 @@ function App() {
     }
 
     void loadMonths();
-  }, [selectedYear, archiveRefreshVersion]);
+  }, [selectedYear, archiveRefreshVersion, hasConfiguredSources]);
 
   useEffect(() => {
     async function loadFirstMemoryPage() {
+      if (isLoadingSources || !hasConfiguredSources) {
+        setIsLoadingMemories(false);
+        setMemories([]);
+        setCurrentPage(0);
+        setTotalMemories(0);
+        setHasMoreMemories(false);
+        return;
+      }
+
       const requestVersion = ++memoryRequestVersion.current;
 
       setIsLoadingMemories(true);
@@ -165,7 +234,13 @@ function App() {
     }
 
     void loadFirstMemoryPage();
-  }, [selectedYear, selectedMonth, archiveRefreshVersion]);
+  }, [
+    selectedYear,
+    selectedMonth,
+    archiveRefreshVersion,
+    hasConfiguredSources,
+    isLoadingSources,
+  ]);
 
   async function loadMoreMemories() {
     if (isLoadingMore || !hasMoreMemories) {
@@ -233,6 +308,23 @@ function App() {
 
   function refreshArchiveData() {
     setArchiveRefreshVersion((currentVersion) => currentVersion + 1);
+    void loadSources();
+  }
+
+  function openSourceCreationFlow() {
+    setActiveView('settings');
+    setShouldFocusSourceForm(true);
+  }
+
+  function handleSourceCreated(source: MemorySource) {
+    setSources((currentSources) => {
+      if (currentSources.some((item) => item.id === source.id)) {
+        return currentSources;
+      }
+
+      return [...currentSources, source];
+    });
+    setShouldFocusSourceForm(false);
   }
 
   const pageTitle =
@@ -260,7 +352,10 @@ function App() {
               className={`sidebar-main-link ${
                 activeView === 'archive' ? 'is-active' : ''
               }`}
-              onClick={() => setActiveView('archive')}
+              onClick={() => {
+                setActiveView('archive');
+                setShouldFocusSourceForm(false);
+              }}
               type="button"
             >
               Archive
@@ -270,7 +365,10 @@ function App() {
               className={`sidebar-main-link ${
                 activeView === 'flashbacks' ? 'is-active' : ''
               }`}
-              onClick={() => setActiveView('flashbacks')}
+              onClick={() => {
+                setActiveView('flashbacks');
+                setShouldFocusSourceForm(false);
+              }}
               type="button"
             >
               Flashbacks
@@ -279,7 +377,10 @@ function App() {
               className={`sidebar-main-link ${
                 activeView === 'settings' ? 'is-active' : ''
               }`}
-              onClick={() => setActiveView('settings')}
+              onClick={() => {
+                setActiveView('settings');
+                setShouldFocusSourceForm(false);
+              }}
               type="button"
             >
               Settings
@@ -287,13 +388,30 @@ function App() {
           </section>
           <p className="sidebar-label">Timeline</p>
 
-          {isLoadingYears && <p className="muted-text">Loading years…</p>}
+          {isLoadingSources && <p className="muted-text">Checking setup…</p>}
 
-          {!isLoadingYears && years.length === 0 && (
+          {!isLoadingSources && sourceLoadError && (
+            <p className="muted-text">Setup status unavailable.</p>
+          )}
+
+          {!isLoadingSources && hasConfiguredSources && isLoadingYears && (
+            <p className="muted-text">Loading years…</p>
+          )}
+
+          {!isLoadingSources && !hasConfiguredSources && !sourceLoadError && (
             <p className="muted-text">
-              No indexed Memories yet. Scan a source first.
+              Add your Snapchat export to build your private archive.
             </p>
           )}
+
+          {!isLoadingSources &&
+            hasConfiguredSources &&
+            !isLoadingYears &&
+            years.length === 0 && (
+              <p className="muted-text">
+                No indexed Memories yet. Scan a source first.
+              </p>
+            )}
 
           <div className="timeline-list">
             {years.map((item) => (
@@ -346,119 +464,149 @@ function App() {
       </aside>
 
       {activeView === 'archive' ? (
-        <section className="content">
-          <header className="content-header">
-            <div>
-              <p className="eyebrow">Memory archive</p>
-              <h2>{pageTitle}</h2>
-            </div>
-
-            <p className="memory-count">
-              {totalMemories} Memories · {memories.length} loaded
-            </p>
-          </header>
-
-          {error && <div className="error-banner">{error}</div>}
-
-          {isLoadingMemories && (
-            <div className="state-message">Loading Memories…</div>
-          )}
-
-          {!isLoadingMemories && memories.length === 0 && !error && (
-            <div className="state-message">
-              No Memories found for this period.
-            </div>
-          )}
-
-          {!isLoadingMemories && memories.length > 0 && (
-            <>
-              <div className="memory-grid">
-                {memories.map((memory) => (
-                  <button
-                    aria-label={`Open Memory from ${memory.capturedAt}`}
-                    className="memory-card"
-                    key={memory.id}
-                    onClick={() => void openMemory(memory.id)}
-                    type="button"
-                  >
-                    <div className="memory-preview">
-                      <img
-                        alt={`Snapchat Memory from ${memory.capturedAt}`}
-                        className="memory-thumbnail"
-                        loading="lazy"
-                        onError={(event) => {
-                          event.currentTarget.style.display = 'none';
-
-                          const fallback =
-                            event.currentTarget.nextElementSibling;
-
-                          if (fallback instanceof HTMLElement) {
-                            fallback.hidden = false;
-                          }
-                        }}
-                        src={memory.thumbnailUrl ?? ''}
-                      />
-
-                      <div className="memory-video-placeholder" hidden>
-                        <span className="media-icon">
-                          {memory.mediaType === 'VIDEO' ? '▶' : '▣'}
-                        </span>
-
-                        <span>
-                          {memory.mediaType === 'VIDEO'
-                            ? 'Video preview unavailable'
-                            : 'Image preview unavailable'}
-                        </span>
-                      </div>
-
-                      {memory.hasOverlay && (
-                        <span className="overlay-badge">Overlay</span>
-                      )}
-
-                      {memory.mediaType === 'VIDEO' && (
-                        <span className="video-badge">Video</span>
-                      )}
-                    </div>
-
-                    <div className="memory-card-content">
-                      <strong>{memory.capturedAt}</strong>
-
-                      <span>
-                        {memory.mediaType.toLowerCase()} ·{' '}
-                        {formatFileSize(memory.fileSizeBytes)}
-                      </span>
-                    </div>
-                  </button>
-                ))}
+        isLoadingSources ? (
+          <section className="content">
+            <div className="state-message">Checking setup…</div>
+          </section>
+        ) : sourceLoadError ? (
+          <section className="content">
+            <header className="content-header">
+              <div>
+                <p className="eyebrow">Setup</p>
+                <h2>SnapMemoria setup</h2>
+              </div>
+            </header>
+            <div className="error-banner">{sourceLoadError}</div>
+          </section>
+        ) : !hasConfiguredSources ? (
+          <OnboardingPage onAddSource={openSourceCreationFlow} />
+        ) : (
+          <section className="content">
+            <header className="content-header">
+              <div>
+                <p className="eyebrow">Memory archive</p>
+                <h2>{pageTitle}</h2>
               </div>
 
-              {hasMoreMemories && (
-                <div className="load-more-container">
-                  <button
-                    className="load-more-button"
-                    disabled={isLoadingMore}
-                    onClick={() => void loadMoreMemories()}
-                    type="button"
-                  >
-                    {isLoadingMore ? 'Loading more Memories…' : 'Load more'}
-                  </button>
-                </div>
-              )}
+              <p className="memory-count">
+                {totalMemories} Memories · {memories.length} loaded
+              </p>
+            </header>
 
-              {!hasMoreMemories && memories.length > 0 && (
-                <p className="end-of-list">
-                  You have reached the end of this period.
-                </p>
-              )}
-            </>
-          )}
-        </section>
+            {error && <div className="error-banner">{error}</div>}
+
+            {isLoadingMemories && (
+              <div className="state-message">Loading Memories…</div>
+            )}
+
+            {!isLoadingMemories && memories.length === 0 && !error && (
+              <div className="state-message archive-empty-state">
+                <strong>Your source is ready.</strong>
+                <span>Scan it to build your private local archive.</span>
+                <button
+                  className="primary-button"
+                  onClick={openSourceCreationFlow}
+                  type="button"
+                >
+                  Start scanning
+                </button>
+              </div>
+            )}
+
+            {!isLoadingMemories && memories.length > 0 && (
+              <>
+                <div className="memory-grid">
+                  {memories.map((memory) => (
+                    <button
+                      aria-label={`Open Memory from ${memory.capturedAt}`}
+                      className="memory-card"
+                      key={memory.id}
+                      onClick={() => void openMemory(memory.id)}
+                      type="button"
+                    >
+                      <div className="memory-preview">
+                        <img
+                          alt={`Snapchat Memory from ${memory.capturedAt}`}
+                          className="memory-thumbnail"
+                          loading="lazy"
+                          onError={(event) => {
+                            event.currentTarget.style.display = 'none';
+
+                            const fallback =
+                              event.currentTarget.nextElementSibling;
+
+                            if (fallback instanceof HTMLElement) {
+                              fallback.hidden = false;
+                            }
+                          }}
+                          src={memory.thumbnailUrl ?? ''}
+                        />
+
+                        <div className="memory-video-placeholder" hidden>
+                          <span className="media-icon">
+                            {memory.mediaType === 'VIDEO' ? '▶' : '▣'}
+                          </span>
+
+                          <span>
+                            {memory.mediaType === 'VIDEO'
+                              ? 'Video preview unavailable'
+                              : 'Image preview unavailable'}
+                          </span>
+                        </div>
+
+                        {memory.hasOverlay && (
+                          <span className="overlay-badge">Overlay</span>
+                        )}
+
+                        {memory.mediaType === 'VIDEO' && (
+                          <span className="video-badge">Video</span>
+                        )}
+                      </div>
+
+                      <div className="memory-card-content">
+                        <strong>{memory.capturedAt}</strong>
+
+                        <span>
+                          {memory.mediaType.toLowerCase()} ·{' '}
+                          {formatFileSize(memory.fileSizeBytes)}
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+
+                {hasMoreMemories && (
+                  <div className="load-more-container">
+                    <button
+                      className="load-more-button"
+                      disabled={isLoadingMore}
+                      onClick={() => void loadMoreMemories()}
+                      type="button"
+                    >
+                      {isLoadingMore ? 'Loading more Memories…' : 'Load more'}
+                    </button>
+                  </div>
+                )}
+
+                {!hasMoreMemories && memories.length > 0 && (
+                  <p className="end-of-list">
+                    You have reached the end of this period.
+                  </p>
+                )}
+              </>
+            )}
+          </section>
+        )
       ) : activeView === 'flashbacks' ? (
         <FlashbacksPage
           onOpenMemory={(memoryId) => void openMemory(memoryId)}
         />
       ) : (
-        <SettingsPage onSourceScanned={refreshArchiveData} />
+        <SettingsPage
+          autoFocusSourceForm={shouldFocusSourceForm}
+          onSourceCreated={handleSourceCreated}
+          onSourceScanned={refreshArchiveData}
+        />
       )}
 
       <MemoryViewer
