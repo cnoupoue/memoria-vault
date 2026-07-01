@@ -171,6 +171,4 @@ Planned improvements include:
 
 ## License
 
-This project is intended to be released under an open-source license.
-
-Choose and add a license file before publishing publicly. The MIT License is a simple option for a permissive open-source project.
+SnapMemoria is licensed under the [MIT License](LICENSE).
