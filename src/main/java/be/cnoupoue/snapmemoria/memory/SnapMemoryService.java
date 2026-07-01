@@ -9,7 +9,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import be.cnoupoue.snapmemoria.memory.api.TimelineMonthResponse;
 import be.cnoupoue.snapmemoria.memory.api.TimelineYearResponse;
-
+import be.cnoupoue.snapmemoria.memory.api.FlashbackMemoryResponse;
+import be.cnoupoue.snapmemoria.memory.api.FlashbackResponse;
+import java.time.LocalDate;
 import java.util.List;
 
 @Service
@@ -96,6 +98,24 @@ public class SnapMemoryService {
                 .toList();
     }
 
+    public FlashbackResponse findFlashbacks(LocalDate date) {
+        String monthDay = "%02d-%02d".formatted(
+                date.getMonthValue(),
+                date.getDayOfMonth()
+        );
+
+        List<FlashbackMemoryResponse> memories = snapMemoryRepository
+                .findFlashbacks(monthDay, date.getYear())
+                .stream()
+                .map(memory -> toFlashbackResponse(memory, date.getYear()))
+                .toList();
+
+        return new FlashbackResponse(
+                date.toString(),
+                memories
+        );
+    }
+
     private void validateDateFilter(Integer year, Integer month) {
         if (month != null && year == null) {
             throw new IllegalArgumentException(
@@ -132,6 +152,23 @@ public class SnapMemoryService {
                 memory.getOverlayPath() != null,
                 memory.getFileSizeBytes(),
                 memory.getLastModifiedAt()
+        );
+    }
+
+    private FlashbackMemoryResponse toFlashbackResponse(
+            SnapMemory memory,
+            int currentYear
+    ) {
+        int memoryYear = Integer.parseInt(memory.getCapturedAt().substring(0, 4));
+
+        return new FlashbackMemoryResponse(
+                memory.getId(),
+                memory.getCapturedAt(),
+                memoryYear,
+                currentYear - memoryYear,
+                memory.getMediaType().name(),
+                memory.getOverlayPath() != null,
+                memory.getFileSizeBytes()
         );
     }
 }
