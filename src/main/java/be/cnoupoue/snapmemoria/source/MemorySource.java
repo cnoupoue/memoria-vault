@@ -11,64 +11,62 @@ import lombok.Getter;
 @Table(name = "memory_sources")
 public class MemorySource {
 
-    @Id
-    private String id;
+  @Id private String id;
 
-    @Column(name = "name", nullable = false)
-    private String name;
+  @Column(name = "name", nullable = false)
+  private String name;
 
-    @Column(name = "root_path", nullable = false, unique = true)
-    private String rootPath;
+  @Column(name = "root_path", nullable = false, unique = true)
+  private String rootPath;
 
-    @Column(name = "last_scan_at")
-    private String lastScanAt;
+  @Column(name = "last_scan_at")
+  private String lastScanAt;
 
-    @Column(name = "last_scan_status")
-    private String lastScanStatus;
+  @Column(name = "last_scan_status")
+  private String lastScanStatus;
 
-    @Column(name = "created_at", nullable = false)
-    private String createdAt;
+  @Column(name = "created_at", nullable = false)
+  private String createdAt;
 
-    @Column(name = "updated_at", nullable = false)
-    private String updatedAt;
+  @Column(name = "updated_at", nullable = false)
+  private String updatedAt;
 
-    protected MemorySource() {
-        // Required by JPA.
-    }
+  protected MemorySource() {
+    // Required by JPA.
+  }
 
-    public MemorySource(
-            String id,
-            String name,
-            String rootPath,
-            String lastScanAt,
-            String lastScanStatus,
-            String createdAt,
-            String updatedAt
-    ) {
-        this.id = id;
-        this.name = name;
-        this.rootPath = rootPath;
-        this.lastScanAt = lastScanAt;
-        this.lastScanStatus = lastScanStatus;
-        this.createdAt = createdAt;
-        this.updatedAt = updatedAt;
-    }
+  public MemorySource(
+      String id,
+      String name,
+      String rootPath,
+      String lastScanAt,
+      String lastScanStatus,
+      String createdAt,
+      String updatedAt) {
+    this.id = id;
+    this.name = name;
+    this.rootPath = rootPath;
+    this.lastScanAt = lastScanAt;
+    this.lastScanStatus = lastScanStatus;
+    this.createdAt = createdAt;
+    this.updatedAt = updatedAt;
+  }
 
-    public void markScanStarted(String startedAt) {
-        this.lastScanAt = startedAt;
-        this.lastScanStatus = "RUNNING";
-        this.updatedAt = startedAt;
-    }
+  public void markScanStarted(String startedAt) {
+    this.lastScanAt = startedAt;
+    this.lastScanStatus = "RUNNING";
+    this.updatedAt = startedAt;
+  }
 
-    public void markScanCompleted(String completedAt) {
-        this.lastScanAt = completedAt;
-        this.lastScanStatus = "COMPLETED";
-        this.updatedAt = completedAt;
-    }
+  public void markScanCompleted(String completedAt) {
+    this.lastScanAt = completedAt;
+    this.lastScanStatus = "COMPLETED";
+    this.updatedAt = completedAt;
+  }
 
-    public void markScanFailed(String failedAt) {
-        this.lastScanAt = failedAt;
-        this.lastScanStatus = "FAILED";
-        this.updatedAt = failedAt;
-    }
+  public void markScanFailed(String failedAt) {
+    this.lastScanAt = failedAt;
+    this.lastScanStatus = "FAILED";
+    this.updatedAt = failedAt;
+  }
 }

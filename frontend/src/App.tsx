@@ -1,35 +1,35 @@
-import { useEffect, useRef, useState } from "react";
-import { MemoryViewer } from "./components/MemoryViewer";
+import { useEffect, useRef, useState } from 'react';
+import { MemoryViewer } from './components/MemoryViewer';
 import {
   getMemories,
   getMemoryDetail,
   getTimelineMonths,
   getTimelineYears,
-} from "./api/snapmemoriaApi";
+} from './api/snapmemoriaApi';
 import type {
   Memory,
   MemoryDetail,
   TimelineMonth,
   TimelineYear,
-} from "./api/types";
-import { FlashbacksPage } from "./components/FlashbacksPage";
-import { SettingsPage } from "./components/SettingsPage";
+} from './api/types';
+import { FlashbacksPage } from './components/FlashbacksPage';
+import { SettingsPage } from './components/SettingsPage';
 
 const PAGE_SIZE = 48;
 
 const MONTH_NAMES = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
 ];
 
 function formatFileSize(bytes: number): string {
@@ -59,17 +59,16 @@ function App() {
   const [error, setError] = useState<string | null>(null);
 
   const [selectedMemory, setSelectedMemory] = useState<MemoryDetail | null>(
-      null,
+    null,
   );
-  const [isLoadingSelectedMemory, setIsLoadingSelectedMemory] =
-      useState(false);
-  const [selectedMemoryError, setSelectedMemoryError] = useState<
-      string | null
-  >(null);
+  const [isLoadingSelectedMemory, setIsLoadingSelectedMemory] = useState(false);
+  const [selectedMemoryError, setSelectedMemoryError] = useState<string | null>(
+    null,
+  );
 
   const [activeView, setActiveView] = useState<
-      "archive" | "flashbacks" | "settings"
-  >("archive");
+    'archive' | 'flashbacks' | 'settings'
+  >('archive');
 
   const [archiveRefreshVersion, setArchiveRefreshVersion] = useState(0);
 
@@ -90,7 +89,7 @@ function App() {
 
         setSelectedYear((currentYear) => {
           const currentYearStillExists = data.some(
-              (item) => item.year === currentYear,
+            (item) => item.year === currentYear,
           );
 
           if (currentYear !== undefined && currentYearStillExists) {
@@ -100,7 +99,7 @@ function App() {
           return data[0]?.year;
         });
       } catch {
-        setError("Could not load the timeline. Is the backend running?");
+        setError('Could not load the timeline. Is the backend running?');
       } finally {
         setIsLoadingYears(false);
       }
@@ -120,7 +119,7 @@ function App() {
         const data = await getTimelineMonths(selectedYear);
         setMonths(data);
       } catch {
-        setError("Could not load the months for this year.");
+        setError('Could not load the months for this year.');
       }
     }
 
@@ -140,10 +139,10 @@ function App() {
 
       try {
         const data = await getMemories(
-            selectedYear,
-            selectedMonth,
-            0,
-            PAGE_SIZE,
+          selectedYear,
+          selectedMonth,
+          0,
+          PAGE_SIZE,
         );
 
         if (requestVersion !== memoryRequestVersion.current) {
@@ -156,7 +155,7 @@ function App() {
         setHasMoreMemories(data.page + 1 < data.totalPages);
       } catch {
         if (requestVersion === memoryRequestVersion.current) {
-          setError("Could not load Memories.");
+          setError('Could not load Memories.');
         }
       } finally {
         if (requestVersion === memoryRequestVersion.current) {
@@ -180,35 +179,32 @@ function App() {
 
     try {
       const data = await getMemories(
-          selectedYear,
-          selectedMonth,
-          nextPage,
-          PAGE_SIZE,
+        selectedYear,
+        selectedMonth,
+        nextPage,
+        PAGE_SIZE,
       );
 
-      setMemories((currentMemories) => [
-        ...currentMemories,
-        ...data.content,
-      ]);
+      setMemories((currentMemories) => [...currentMemories, ...data.content]);
 
       setCurrentPage(data.page);
       setTotalMemories(data.totalElements);
       setHasMoreMemories(data.page + 1 < data.totalPages);
     } catch {
-      setError("Could not load more Memories.");
+      setError('Could not load more Memories.');
     } finally {
       setIsLoadingMore(false);
     }
   }
 
   function selectYear(year: number) {
-    setActiveView("archive");
+    setActiveView('archive');
     setSelectedYear(year);
     setSelectedMonth(undefined);
   }
 
   function selectMonth(month: number) {
-    setActiveView("archive");
+    setActiveView('archive');
     setSelectedMonth(month);
   }
 
@@ -222,7 +218,7 @@ function App() {
       setSelectedMemory(detail);
     } catch {
       setSelectedMemoryError(
-          "Could not open this Memory. The source drive may be unavailable.",
+        'Could not open this Memory. The source drive may be unavailable.',
       );
     } finally {
       setIsLoadingSelectedMemory(false);
@@ -240,235 +236,238 @@ function App() {
   }
 
   const pageTitle =
-      selectedYear === undefined
-          ? "All Memories"
-          : selectedMonth === undefined
-              ? String(selectedYear)
-              : `${MONTH_NAMES[selectedMonth - 1]} ${selectedYear}`;
+    selectedYear === undefined
+      ? 'All Memories'
+      : selectedMonth === undefined
+        ? String(selectedYear)
+        : `${MONTH_NAMES[selectedMonth - 1]} ${selectedYear}`;
 
   return (
-      <main className="app-shell">
-        <aside className="sidebar">
-          <div className="brand">
-            <span className="brand-mark">S</span>
+    <main className="app-shell">
+      <aside className="sidebar">
+        <div className="brand">
+          <span className="brand-mark">S</span>
 
-            <div>
-              <h1>SnapMemoria</h1>
-              <p>Your Snapchat archive</p>
-            </div>
+          <div>
+            <h1>SnapMemoria</h1>
+            <p>Your Snapchat archive</p>
           </div>
+        </div>
 
+        <section className="sidebar-section">
+          <section className="sidebar-section sidebar-primary-navigation">
+            <button
+              className={`sidebar-main-link ${
+                activeView === 'archive' ? 'is-active' : ''
+              }`}
+              onClick={() => setActiveView('archive')}
+              type="button"
+            >
+              Archive
+            </button>
+
+            <button
+              className={`sidebar-main-link ${
+                activeView === 'flashbacks' ? 'is-active' : ''
+              }`}
+              onClick={() => setActiveView('flashbacks')}
+              type="button"
+            >
+              Flashbacks
+            </button>
+            <button
+              className={`sidebar-main-link ${
+                activeView === 'settings' ? 'is-active' : ''
+              }`}
+              onClick={() => setActiveView('settings')}
+              type="button"
+            >
+              Settings
+            </button>
+          </section>
+          <p className="sidebar-label">Timeline</p>
+
+          {isLoadingYears && <p className="muted-text">Loading years…</p>}
+
+          {!isLoadingYears && years.length === 0 && (
+            <p className="muted-text">
+              No indexed Memories yet. Scan a source first.
+            </p>
+          )}
+
+          <div className="timeline-list">
+            {years.map((item) => (
+              <button
+                className={`timeline-year ${
+                  selectedYear === item.year ? 'is-active' : ''
+                }`}
+                key={item.year}
+                onClick={() => selectYear(item.year)}
+                type="button"
+              >
+                <span>{item.year}</span>
+                <span>{item.memoryCount}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {selectedYear !== undefined && months.length > 0 && (
           <section className="sidebar-section">
-            <section className="sidebar-section sidebar-primary-navigation">
-              <button
-                  className={`sidebar-main-link ${
-                      activeView === "archive" ? "is-active" : ""
+            <p className="sidebar-label">{selectedYear} months</p>
+
+            <button
+              className={`month-button ${
+                selectedMonth === undefined ? 'is-active' : ''
+              }`}
+              onClick={() => setSelectedMonth(undefined)}
+              type="button"
+            >
+              <span>All year</span>
+            </button>
+
+            <div className="months-list">
+              {months.map((item) => (
+                <button
+                  className={`month-button ${
+                    selectedMonth === item.month ? 'is-active' : ''
                   }`}
-                  onClick={() => setActiveView("archive")}
+                  key={item.month}
+                  onClick={() => selectMonth(item.month)}
                   type="button"
-              >
-                Archive
-              </button>
-
-              <button
-                  className={`sidebar-main-link ${
-                      activeView === "flashbacks" ? "is-active" : ""
-                  }`}
-                  onClick={() => setActiveView("flashbacks")}
-                  type="button"
-              >
-                Flashbacks
-              </button>
-              <button
-                  className={`sidebar-main-link ${
-                      activeView === "settings" ? "is-active" : ""
-                  }`}
-                  onClick={() => setActiveView("settings")}
-                  type="button"
-              >
-                Settings
-              </button>
-            </section>
-            <p className="sidebar-label">Timeline</p>
-
-            {isLoadingYears && <p className="muted-text">Loading years…</p>}
-
-            {!isLoadingYears && years.length === 0 && (
-                <p className="muted-text">
-                  No indexed Memories yet. Scan a source first.
-                </p>
-            )}
-
-            <div className="timeline-list">
-              {years.map((item) => (
-                  <button
-                      className={`timeline-year ${
-                          selectedYear === item.year ? "is-active" : ""
-                      }`}
-                      key={item.year}
-                      onClick={() => selectYear(item.year)}
-                      type="button"
-                  >
-                    <span>{item.year}</span>
-                    <span>{item.memoryCount}</span>
-                  </button>
+                >
+                  <span>{MONTH_NAMES[item.month - 1]}</span>
+                  <span>{item.memoryCount}</span>
+                </button>
               ))}
             </div>
           </section>
+        )}
+      </aside>
 
-          {selectedYear !== undefined && months.length > 0 && (
-              <section className="sidebar-section">
-                <p className="sidebar-label">{selectedYear} months</p>
+      {activeView === 'archive' ? (
+        <section className="content">
+          <header className="content-header">
+            <div>
+              <p className="eyebrow">Memory archive</p>
+              <h2>{pageTitle}</h2>
+            </div>
 
-                <button
-                    className={`month-button ${
-                        selectedMonth === undefined ? "is-active" : ""
-                    }`}
-                    onClick={() => setSelectedMonth(undefined)}
-                    type="button"
-                >
-                  <span>All year</span>
-                </button>
+            <p className="memory-count">
+              {totalMemories} Memories · {memories.length} loaded
+            </p>
+          </header>
 
-                <div className="months-list">
-                  {months.map((item) => (
-                      <button
-                          className={`month-button ${
-                              selectedMonth === item.month ? "is-active" : ""
-                          }`}
-                          key={item.month}
-                          onClick={() => selectMonth(item.month)}
-                          type="button"
-                      >
-                        <span>{MONTH_NAMES[item.month - 1]}</span>
-                        <span>{item.memoryCount}</span>
-                      </button>
-                  ))}
-                </div>
-              </section>
+          {error && <div className="error-banner">{error}</div>}
+
+          {isLoadingMemories && (
+            <div className="state-message">Loading Memories…</div>
           )}
-        </aside>
 
-        {activeView === "archive" ? (
-            <section className="content">
-              <header className="content-header">
-                <div>
-                  <p className="eyebrow">Memory archive</p>
-                  <h2>{pageTitle}</h2>
-                </div>
+          {!isLoadingMemories && memories.length === 0 && !error && (
+            <div className="state-message">
+              No Memories found for this period.
+            </div>
+          )}
 
-                <p className="memory-count">
-                  {totalMemories} Memories · {memories.length} loaded
-                </p>
-              </header>
+          {!isLoadingMemories && memories.length > 0 && (
+            <>
+              <div className="memory-grid">
+                {memories.map((memory) => (
+                  <button
+                    aria-label={`Open Memory from ${memory.capturedAt}`}
+                    className="memory-card"
+                    key={memory.id}
+                    onClick={() => void openMemory(memory.id)}
+                    type="button"
+                  >
+                    <div className="memory-preview">
+                      <img
+                        alt={`Snapchat Memory from ${memory.capturedAt}`}
+                        className="memory-thumbnail"
+                        loading="lazy"
+                        onError={(event) => {
+                          event.currentTarget.style.display = 'none';
 
-              {error && <div className="error-banner">{error}</div>}
+                          const fallback =
+                            event.currentTarget.nextElementSibling;
 
-              {isLoadingMemories && (
-                  <div className="state-message">Loading Memories…</div>
-              )}
+                          if (fallback instanceof HTMLElement) {
+                            fallback.hidden = false;
+                          }
+                        }}
+                        src={memory.thumbnailUrl ?? ''}
+                      />
 
-              {!isLoadingMemories && memories.length === 0 && !error && (
-                  <div className="state-message">
-                    No Memories found for this period.
-                  </div>
-              )}
+                      <div className="memory-video-placeholder" hidden>
+                        <span className="media-icon">
+                          {memory.mediaType === 'VIDEO' ? '▶' : '▣'}
+                        </span>
 
-              {!isLoadingMemories && memories.length > 0 && (
-                  <>
-                    <div className="memory-grid">
-                      {memories.map((memory) => (
-                          <button
-                              aria-label={`Open Memory from ${memory.capturedAt}`}
-                              className="memory-card"
-                              key={memory.id}
-                              onClick={() => void openMemory(memory.id)}
-                              type="button"
-                          >
-                            <div className="memory-preview">
-                              <img
-                                  alt={`Snapchat Memory from ${memory.capturedAt}`}
-                                  className="memory-thumbnail"
-                                  loading="lazy"
-                                  onError={(event) => {
-                                    event.currentTarget.style.display = "none";
+                        <span>
+                          {memory.mediaType === 'VIDEO'
+                            ? 'Video preview unavailable'
+                            : 'Image preview unavailable'}
+                        </span>
+                      </div>
 
-                                    const fallback = event.currentTarget.nextElementSibling;
+                      {memory.hasOverlay && (
+                        <span className="overlay-badge">Overlay</span>
+                      )}
 
-                                    if (fallback instanceof HTMLElement) {
-                                      fallback.hidden = false;
-                                    }
-                                  }}
-                                  src={memory.thumbnailUrl ?? ""}
-                              />
-
-                              <div className="memory-video-placeholder" hidden>
-                  <span className="media-icon">
-                    {memory.mediaType === "VIDEO" ? "▶" : "▣"}
-                  </span>
-
-                                <span>
-                    {memory.mediaType === "VIDEO"
-                        ? "Video preview unavailable"
-                        : "Image preview unavailable"}
-                  </span>
-                              </div>
-
-                              {memory.hasOverlay && (
-                                  <span className="overlay-badge">Overlay</span>
-                              )}
-
-                              {memory.mediaType === "VIDEO" && (
-                                  <span className="video-badge">Video</span>
-                              )}
-                            </div>
-
-                            <div className="memory-card-content">
-                              <strong>{memory.capturedAt}</strong>
-
-                              <span>
-                  {memory.mediaType.toLowerCase()} ·{" "}
-                                {formatFileSize(memory.fileSizeBytes)}
-                </span>
-                            </div>
-                          </button>
-                      ))}
+                      {memory.mediaType === 'VIDEO' && (
+                        <span className="video-badge">Video</span>
+                      )}
                     </div>
 
-                    {hasMoreMemories && (
-                        <div className="load-more-container">
-                          <button
-                              className="load-more-button"
-                              disabled={isLoadingMore}
-                              onClick={() => void loadMoreMemories()}
-                              type="button"
-                          >
-                            {isLoadingMore ? "Loading more Memories…" : "Load more"}
-                          </button>
-                        </div>
-                    )}
+                    <div className="memory-card-content">
+                      <strong>{memory.capturedAt}</strong>
 
-                    {!hasMoreMemories && memories.length > 0 && (
-                        <p className="end-of-list">
-                          You have reached the end of this period.
-                        </p>
-                    )}
-                  </>
+                      <span>
+                        {memory.mediaType.toLowerCase()} ·{' '}
+                        {formatFileSize(memory.fileSizeBytes)}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+
+              {hasMoreMemories && (
+                <div className="load-more-container">
+                  <button
+                    className="load-more-button"
+                    disabled={isLoadingMore}
+                    onClick={() => void loadMoreMemories()}
+                    type="button"
+                  >
+                    {isLoadingMore ? 'Loading more Memories…' : 'Load more'}
+                  </button>
+                </div>
               )}
-            </section>
-        ) : activeView === "flashbacks" ? (
-            <FlashbacksPage onOpenMemory={(memoryId) => void openMemory(memoryId)} />
-        ) : (
-            <SettingsPage onSourceScanned={refreshArchiveData} />
-        )}
 
-        <MemoryViewer
-            error={selectedMemoryError}
-            isLoading={isLoadingSelectedMemory}
-            memory={selectedMemory}
-            onClose={closeMemoryViewer}
+              {!hasMoreMemories && memories.length > 0 && (
+                <p className="end-of-list">
+                  You have reached the end of this period.
+                </p>
+              )}
+            </>
+          )}
+        </section>
+      ) : activeView === 'flashbacks' ? (
+        <FlashbacksPage
+          onOpenMemory={(memoryId) => void openMemory(memoryId)}
         />
-      </main>
+      ) : (
+        <SettingsPage onSourceScanned={refreshArchiveData} />
+      )}
+
+      <MemoryViewer
+        error={selectedMemoryError}
+        isLoading={isLoadingSelectedMemory}
+        memory={selectedMemory}
+        onClose={closeMemoryViewer}
+      />
+    </main>
   );
 }
 

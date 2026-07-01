@@ -1,14 +1,13 @@
 package be.cnoupoue.snapmemoria.source;
 
-import org.springframework.data.jpa.repository.JpaRepository;
-
 import java.util.Optional;
+import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface MemorySourceRepository extends JpaRepository<MemorySource, String> {
 
-    boolean existsByRootPath(String rootPath);
+  boolean existsByRootPath(String rootPath);
 
-    Optional<MemorySource> findByRootPath(String rootPath);
+  Optional<MemorySource> findByRootPath(String rootPath);
 
-    Optional<MemorySource> findById(String id);
+  Optional<MemorySource> findById(String id);
 }

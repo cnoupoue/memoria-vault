@@ -1,15 +1,11 @@
 package be.cnoupoue.snapmemoria.indexing;
 
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-import java.util.Optional;
+public interface MemoryScanJobRepository extends JpaRepository<MemoryScanJob, String> {
 
-public interface MemoryScanJobRepository
-        extends JpaRepository<MemoryScanJob, String> {
+  boolean existsBySourceIdAndStatus(String sourceId, String status);
 
-    boolean existsBySourceIdAndStatus(String sourceId, String status);
-
-    Optional<MemoryScanJob> findTopBySourceIdOrderByStartedAtDesc(
-            String sourceId
-    );
+  Optional<MemoryScanJob> findTopBySourceIdOrderByStartedAtDesc(String sourceId);
 }

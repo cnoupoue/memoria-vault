@@ -2,7 +2,7 @@ package be.cnoupoue.snapmemoria.memory;
 
 public interface MonthMemoryCount {
 
-    int getMonth();
+  int getMonth();
 
-    long getMemoryCount();
+  long getMemoryCount();
 }

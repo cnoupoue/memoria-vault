@@ -1,197 +1,157 @@
 package be.cnoupoue.snapmemoria.memory;
 
 import be.cnoupoue.snapmemoria.memory.api.*;
+import java.time.LocalDate;
+import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.time.LocalDate;
-import java.util.List;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.http.HttpStatus;
 
 @Service
 @Transactional(readOnly = true)
 public class SnapMemoryService {
 
-    private static final int DEFAULT_PAGE_SIZE = 60;
-    private static final int MAX_PAGE_SIZE = 100;
+  private static final int DEFAULT_PAGE_SIZE = 60;
+  private static final int MAX_PAGE_SIZE = 100;
 
-    private final SnapMemoryRepository snapMemoryRepository;
+  private final SnapMemoryRepository snapMemoryRepository;
 
-    public SnapMemoryService(SnapMemoryRepository snapMemoryRepository) {
-        this.snapMemoryRepository = snapMemoryRepository;
+  public SnapMemoryService(SnapMemoryRepository snapMemoryRepository) {
+    this.snapMemoryRepository = snapMemoryRepository;
+  }
+
+  public MemoryPageResponse findAll(Integer year, Integer month, int page, int size) {
+    validateDateFilter(year, month);
+
+    int validatedPage = Math.max(page, 0);
+    int validatedSize = Math.clamp(size, 1, MAX_PAGE_SIZE);
+
+    PageRequest pageRequest =
+        PageRequest.of(
+            validatedPage,
+            validatedSize,
+            Sort.by(Sort.Order.desc("capturedAt"), Sort.Order.desc("createdAt")));
+
+    Page<SnapMemory> memoryPage;
+
+    String capturedAtPrefix = buildCapturedAtPrefix(year, month);
+
+    if (capturedAtPrefix == null) {
+      memoryPage = snapMemoryRepository.findAll(pageRequest);
+    } else {
+      memoryPage = snapMemoryRepository.findByCapturedAtStartingWith(capturedAtPrefix, pageRequest);
     }
 
-    public MemoryPageResponse findAll(
-            Integer year,
-            Integer month,
-            int page,
-            int size
-    ) {
-        validateDateFilter(year, month);
+    List<MemoryResponse> content = memoryPage.getContent().stream().map(this::toResponse).toList();
 
-        int validatedPage = Math.max(page, 0);
-        int validatedSize = Math.clamp(size, 1, MAX_PAGE_SIZE);
+    return new MemoryPageResponse(
+        content,
+        memoryPage.getNumber(),
+        memoryPage.getSize(),
+        memoryPage.getTotalElements(),
+        memoryPage.getTotalPages());
+  }
 
-        PageRequest pageRequest = PageRequest.of(
-                validatedPage,
-                validatedSize,
-                Sort.by(
-                        Sort.Order.desc("capturedAt"),
-                        Sort.Order.desc("createdAt")
-                )
-        );
+  public List<TimelineYearResponse> findTimelineYears() {
+    return snapMemoryRepository.countMemoriesByYear().stream()
+        .map(item -> new TimelineYearResponse(item.getYear(), item.getMemoryCount()))
+        .toList();
+  }
 
-        Page<SnapMemory> memoryPage;
-
-        String capturedAtPrefix = buildCapturedAtPrefix(year, month);
-
-        if (capturedAtPrefix == null) {
-            memoryPage = snapMemoryRepository.findAll(pageRequest);
-        } else {
-            memoryPage = snapMemoryRepository.findByCapturedAtStartingWith(
-                    capturedAtPrefix,
-                    pageRequest
-            );
-        }
-
-        List<MemoryResponse> content = memoryPage.getContent()
-                .stream()
-                .map(this::toResponse)
-                .toList();
-
-        return new MemoryPageResponse(
-                content,
-                memoryPage.getNumber(),
-                memoryPage.getSize(),
-                memoryPage.getTotalElements(),
-                memoryPage.getTotalPages()
-        );
+  public List<TimelineMonthResponse> findTimelineMonths(int year) {
+    if (year < 2000 || year > 2100) {
+      throw new IllegalArgumentException("Year must be between 2000 and 2100.");
     }
 
-    public List<TimelineYearResponse> findTimelineYears() {
-        return snapMemoryRepository.countMemoriesByYear()
-                .stream()
-                .map(item -> new TimelineYearResponse(
-                        item.getYear(),
-                        item.getMemoryCount()
-                ))
-                .toList();
+    return snapMemoryRepository.countMemoriesByMonth(year).stream()
+        .map(item -> new TimelineMonthResponse(item.getMonth(), item.getMemoryCount()))
+        .toList();
+  }
+
+  public FlashbackResponse findFlashbacks(LocalDate date) {
+    String monthDay = "%02d-%02d".formatted(date.getMonthValue(), date.getDayOfMonth());
+
+    List<FlashbackMemoryResponse> memories =
+        snapMemoryRepository.findFlashbacks(monthDay, date.getYear()).stream()
+            .map(memory -> toFlashbackResponse(memory, date.getYear()))
+            .toList();
+
+    return new FlashbackResponse(date.toString(), memories);
+  }
+
+  public MemoryDetailResponse findById(String memoryId) {
+    SnapMemory memory =
+        snapMemoryRepository
+            .findById(memoryId)
+            .orElseThrow(
+                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Memory not found."));
+
+    return new MemoryDetailResponse(
+        memory.getId(),
+        memory.getCapturedAt(),
+        memory.getMediaType().name(),
+        memory.getOverlayPath() != null,
+        memory.getFileSizeBytes(),
+        memory.getLastModifiedAt(),
+        "/api/memories/%s/media".formatted(memory.getId()),
+        memory.getOverlayPath() == null
+            ? null
+            : "/api/memories/%s/overlay".formatted(memory.getId()));
+  }
+
+  private void validateDateFilter(Integer year, Integer month) {
+    if (month != null && year == null) {
+      throw new IllegalArgumentException("A month filter requires a year filter.");
     }
 
-    public List<TimelineMonthResponse> findTimelineMonths(int year) {
-        if (year < 2000 || year > 2100) {
-            throw new IllegalArgumentException("Year must be between 2000 and 2100.");
-        }
-
-        return snapMemoryRepository.countMemoriesByMonth(year)
-                .stream()
-                .map(item -> new TimelineMonthResponse(
-                        item.getMonth(),
-                        item.getMemoryCount()
-                ))
-                .toList();
+    if (year != null && (year < 2000 || year > 2100)) {
+      throw new IllegalArgumentException("Year must be between 2000 and 2100.");
     }
 
-    public FlashbackResponse findFlashbacks(LocalDate date) {
-        String monthDay = "%02d-%02d".formatted(
-                date.getMonthValue(),
-                date.getDayOfMonth()
-        );
+    if (month != null && (month < 1 || month > 12)) {
+      throw new IllegalArgumentException("Month must be between 1 and 12.");
+    }
+  }
 
-        List<FlashbackMemoryResponse> memories = snapMemoryRepository
-                .findFlashbacks(monthDay, date.getYear())
-                .stream()
-                .map(memory -> toFlashbackResponse(memory, date.getYear()))
-                .toList();
-
-        return new FlashbackResponse(
-                date.toString(),
-                memories
-        );
+  private String buildCapturedAtPrefix(Integer year, Integer month) {
+    if (year == null) {
+      return null;
     }
 
-    public MemoryDetailResponse findById(String memoryId) {
-        SnapMemory memory = snapMemoryRepository.findById(memoryId)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Memory not found."
-                ));
-
-        return new MemoryDetailResponse(
-                memory.getId(),
-                memory.getCapturedAt(),
-                memory.getMediaType().name(),
-                memory.getOverlayPath() != null,
-                memory.getFileSizeBytes(),
-                memory.getLastModifiedAt(),
-                "/api/memories/%s/media".formatted(memory.getId()),
-                memory.getOverlayPath() == null
-                        ? null
-                        : "/api/memories/%s/overlay".formatted(memory.getId())
-        );
+    if (month == null) {
+      return String.valueOf(year);
     }
 
-    private void validateDateFilter(Integer year, Integer month) {
-        if (month != null && year == null) {
-            throw new IllegalArgumentException(
-                    "A month filter requires a year filter."
-            );
-        }
+    return "%d-%02d".formatted(year, month);
+  }
 
-        if (year != null && (year < 2000 || year > 2100)) {
-            throw new IllegalArgumentException("Year must be between 2000 and 2100.");
-        }
+  private MemoryResponse toResponse(SnapMemory memory) {
+    String thumbnailUrl = "/api/memories/%s/thumbnail".formatted(memory.getId());
 
-        if (month != null && (month < 1 || month > 12)) {
-            throw new IllegalArgumentException("Month must be between 1 and 12.");
-        }
-    }
+    return new MemoryResponse(
+        memory.getId(),
+        memory.getCapturedAt(),
+        memory.getMediaType().name(),
+        memory.getOverlayPath() != null,
+        memory.getFileSizeBytes(),
+        memory.getLastModifiedAt(),
+        thumbnailUrl);
+  }
 
-    private String buildCapturedAtPrefix(Integer year, Integer month) {
-        if (year == null) {
-            return null;
-        }
+  private FlashbackMemoryResponse toFlashbackResponse(SnapMemory memory, int currentYear) {
+    int memoryYear = Integer.parseInt(memory.getCapturedAt().substring(0, 4));
 
-        if (month == null) {
-            return String.valueOf(year);
-        }
-
-        return "%d-%02d".formatted(year, month);
-    }
-
-    private MemoryResponse toResponse(SnapMemory memory) {
-        String thumbnailUrl = "/api/memories/%s/thumbnail"
-                .formatted(memory.getId());
-
-        return new MemoryResponse(
-                memory.getId(),
-                memory.getCapturedAt(),
-                memory.getMediaType().name(),
-                memory.getOverlayPath() != null,
-                memory.getFileSizeBytes(),
-                memory.getLastModifiedAt(),
-                thumbnailUrl
-        );
-    }
-
-    private FlashbackMemoryResponse toFlashbackResponse(
-            SnapMemory memory,
-            int currentYear
-    ) {
-        int memoryYear = Integer.parseInt(memory.getCapturedAt().substring(0, 4));
-
-        return new FlashbackMemoryResponse(
-                memory.getId(),
-                memory.getCapturedAt(),
-                memoryYear,
-                currentYear - memoryYear,
-                memory.getMediaType().name(),
-                memory.getOverlayPath() != null,
-                memory.getFileSizeBytes()
-        );
-    }
+    return new FlashbackMemoryResponse(
+        memory.getId(),
+        memory.getCapturedAt(),
+        memoryYear,
+        currentYear - memoryYear,
+        memory.getMediaType().name(),
+        memory.getOverlayPath() != null,
+        memory.getFileSizeBytes());
+  }
 }
