@@ -1,9 +1,10 @@
-import {type FormEvent, useEffect, useState } from "react";
+import {type FormEvent, useEffect, useRef, useState } from "react";
 import {
     createMemorySource,
     deleteMemorySource,
-    getMemorySources,
+    getLatestMemorySourceScan,
     getMemoryScanJob,
+    getMemorySources,
     startMemorySourceScan,
 } from "../api/snapmemoriaApi";
 import type {
@@ -62,6 +63,65 @@ export function SettingsPage({
     const [error, setError] = useState<string | null>(null);
     const [scanJob, setScanJob] = useState<MemoryScanJob | null>(null);
 
+    const pollingIntervalRef = useRef<number | null>(null);
+
+    function stopPolling() {
+        if (pollingIntervalRef.current !== null) {
+            window.clearInterval(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+        }
+    }
+
+    async function handleFinishedScan(job: MemoryScanJob) {
+        stopPolling();
+        setScanningSourceId(null);
+
+        await loadSources();
+
+        if (job.status === "COMPLETED") {
+            onSourceScanned();
+            return;
+        }
+
+        setError(
+            job.errorMessage ?? "The scan failed unexpectedly.",
+        );
+    }
+
+    function startPolling(scanJobId: string, sourceId: string) {
+        stopPolling();
+
+        pollingIntervalRef.current = window.setInterval(() => {
+            void (async () => {
+                try {
+                    const updatedJob = await getMemoryScanJob(scanJobId);
+
+                    setScanJob(updatedJob);
+
+                    if (
+                        updatedJob.status === "COMPLETED" ||
+                        updatedJob.status === "FAILED"
+                    ) {
+                        await handleFinishedScan(updatedJob);
+                    }
+                } catch {
+                    stopPolling();
+                    setScanningSourceId(null);
+
+                    setError("Could not retrieve scan progress.");
+                }
+            })();
+        }, 1000);
+
+        setScanningSourceId(sourceId);
+    }
+
+    useEffect(() => {
+        return () => {
+            stopPolling();
+        };
+    }, []);
+
     async function loadSources() {
         setIsLoading(true);
         setError(null);
@@ -80,6 +140,35 @@ export function SettingsPage({
 
     useEffect(() => {
         void loadSources();
+    }, []);
+
+    useEffect(() => {
+        async function restoreRunningScan() {
+            try {
+                const configuredSources = await getMemorySources();
+
+                for (const source of configuredSources) {
+                    try {
+                        const latestScanJob = await getLatestMemorySourceScan(source.id);
+
+                        if (latestScanJob.status === "RUNNING") {
+                            setScanJob(latestScanJob);
+                            startPolling(latestScanJob.id, source.id);
+                            return;
+                        }
+                    } catch {
+                        /*
+                         * A 404 simply means this source has never been scanned.
+                         * Continue checking the other sources.
+                         */
+                    }
+                }
+            } catch {
+                // loadSources() already displays the relevant error.
+            }
+        }
+
+        void restoreRunningScan();
     }, []);
 
     async function handleCreateSource(event: FormEvent<HTMLFormElement>) {
@@ -128,7 +217,6 @@ export function SettingsPage({
     }
 
     async function handleScan(source: MemorySource) {
-        setScanningSourceId(source.id);
         setError(null);
         setScanJob(null);
 
@@ -136,45 +224,8 @@ export function SettingsPage({
             const startedJob = await startMemorySourceScan(source.id);
 
             setScanJob(startedJob);
-
-            const pollingInterval = window.setInterval(async () => {
-                try {
-                    const updatedJob = await getMemoryScanJob(startedJob.id);
-
-                    setScanJob(updatedJob);
-
-                    if (
-                        updatedJob.status === "COMPLETED" ||
-                        updatedJob.status === "FAILED"
-                    ) {
-                        window.clearInterval(pollingInterval);
-
-                        setScanningSourceId(null);
-
-                        await loadSources();
-
-                        if (updatedJob.status === "COMPLETED") {
-                            onSourceScanned();
-                        } else {
-                            setError(
-                                updatedJob.errorMessage ??
-                                "The scan failed unexpectedly.",
-                            );
-                        }
-                    }
-                } catch {
-                    window.clearInterval(pollingInterval);
-
-                    setScanningSourceId(null);
-
-                    setError(
-                        "Could not retrieve scan progress.",
-                    );
-                }
-            }, 1000);
+            startPolling(startedJob.id, source.id);
         } catch {
-            setScanningSourceId(null);
-
             setError(
                 "Could not start this scan. A scan may already be running for this source.",
             );
@@ -187,6 +238,10 @@ export function SettingsPage({
         );
 
         if (!confirmed) {
+            return;
+        }
+        if (scanningSourceId === source.id) {
+            setError("A running source cannot be removed.");
             return;
         }
 

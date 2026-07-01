@@ -60,4 +60,20 @@ public class MemoryScanJobService {
                         "Scan job not found."
                 ));
     }
+
+    public MemoryScanJob findLatestBySourceId(String sourceId) {
+        if (!memorySourceRepository.existsById(sourceId)) {
+            throw new ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Memory source not found."
+            );
+        }
+
+        return memoryScanJobRepository
+                .findTopBySourceIdOrderByStartedAtDesc(sourceId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "No scan job found for this source."
+                ));
+    }
 }

@@ -24,6 +24,15 @@ public class MemoryScanJobController {
         return toResponse(memoryScanJobService.findById(id));
     }
 
+    @GetMapping("/latest/source/{sourceId}")
+    public MemoryScanJobResponse findLatestForSource(
+            @PathVariable String sourceId
+    ) {
+        return toResponse(
+                memoryScanJobService.findLatestBySourceId(sourceId)
+        );
+    }
+
     static MemoryScanJobResponse toResponse(MemoryScanJob scanJob) {
         return new MemoryScanJobResponse(
                 scanJob.getId(),

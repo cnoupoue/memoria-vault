@@ -109,3 +109,11 @@ export function getMemoryScanJob(
 ): Promise<MemoryScanJob> {
     return request<MemoryScanJob>(`/api/scans/${scanJobId}`);
 }
+
+export function getLatestMemorySourceScan(
+    sourceId: string,
+): Promise<MemoryScanJob> {
+    return request<MemoryScanJob>(
+        `/api/scans/latest/source/${sourceId}`,
+    );
+}
