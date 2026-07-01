@@ -9,4 +9,6 @@ public interface MemorySourceRepository extends JpaRepository<MemorySource, Stri
     boolean existsByRootPath(String rootPath);
 
     Optional<MemorySource> findByRootPath(String rootPath);
+
+    Optional<MemorySource> findById(String id);
 }

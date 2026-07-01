@@ -8,6 +8,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import be.cnoupoue.snapmemoria.indexing.MemorySourceScanner;
+import org.springframework.web.bind.annotation.PathVariable;
 
 import java.util.List;
 
@@ -16,9 +18,15 @@ import java.util.List;
 public class MemorySourceController {
 
     private final MemorySourceService memorySourceService;
+    private final MemorySourceScanner memorySourceScanner;
 
-    public MemorySourceController(MemorySourceService memorySourceService) {
+
+    public MemorySourceController(
+            MemorySourceService memorySourceService,
+            MemorySourceScanner memorySourceScanner
+    ) {
         this.memorySourceService = memorySourceService;
+        this.memorySourceScanner = memorySourceScanner;
     }
 
     @PostMapping
@@ -32,5 +40,10 @@ public class MemorySourceController {
     @GetMapping
     public List<MemorySourceResponse> findAll() {
         return memorySourceService.findAll();
+    }
+
+    @PostMapping("/{id}/scan")
+    public ScanMemorySourceResponse scan(@PathVariable String id) {
+        return memorySourceScanner.scan(id);
     }
 }
