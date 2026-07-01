@@ -71,6 +71,8 @@ function App() {
       "archive" | "flashbacks" | "settings"
   >("archive");
 
+  const [archiveRefreshVersion, setArchiveRefreshVersion] = useState(0);
+
   /*
    * Prevents an older response from replacing newer results
    * when the user changes year or month quickly.
@@ -79,14 +81,24 @@ function App() {
 
   useEffect(() => {
     async function loadYears() {
+      setIsLoadingYears(true);
+
       try {
         const data = await getTimelineYears();
 
         setYears(data);
 
-        if (data.length > 0) {
-          setSelectedYear(data[0].year);
-        }
+        setSelectedYear((currentYear) => {
+          const currentYearStillExists = data.some(
+              (item) => item.year === currentYear,
+          );
+
+          if (currentYear !== undefined && currentYearStillExists) {
+            return currentYear;
+          }
+
+          return data[0]?.year;
+        });
       } catch {
         setError("Could not load the timeline. Is the backend running?");
       } finally {
@@ -95,7 +107,7 @@ function App() {
     }
 
     void loadYears();
-  }, []);
+  }, [archiveRefreshVersion]);
 
   useEffect(() => {
     async function loadMonths() {
@@ -113,7 +125,7 @@ function App() {
     }
 
     void loadMonths();
-  }, [selectedYear]);
+  }, [selectedYear, archiveRefreshVersion]);
 
   useEffect(() => {
     async function loadFirstMemoryPage() {
@@ -154,7 +166,7 @@ function App() {
     }
 
     void loadFirstMemoryPage();
-  }, [selectedYear, selectedMonth]);
+  }, [selectedYear, selectedMonth, archiveRefreshVersion]);
 
   async function loadMoreMemories() {
     if (isLoadingMore || !hasMoreMemories) {
@@ -221,6 +233,10 @@ function App() {
     setSelectedMemory(null);
     setSelectedMemoryError(null);
     setIsLoadingSelectedMemory(false);
+  }
+
+  function refreshArchiveData() {
+    setArchiveRefreshVersion((currentVersion) => currentVersion + 1);
   }
 
   const pageTitle =
@@ -443,12 +459,7 @@ function App() {
         ) : activeView === "flashbacks" ? (
             <FlashbacksPage onOpenMemory={(memoryId) => void openMemory(memoryId)} />
         ) : (
-            <SettingsPage
-                onSourceScanned={() => {
-                  setActiveView("archive");
-                  setSelectedMonth(undefined);
-                }}
-            />
+            <SettingsPage onSourceScanned={refreshArchiveData} />
         )}
 
         <MemoryViewer
