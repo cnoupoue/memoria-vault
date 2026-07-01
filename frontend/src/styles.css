@@ -480,6 +480,193 @@ button {
     font-size: 0.9rem;
 }
 
+.settings-section {
+    padding: 24px;
+    margin-bottom: 24px;
+    background: white;
+    border: 1px solid #e7e7e7;
+    border-radius: 14px;
+}
+
+.settings-section-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.settings-section-header h3 {
+    margin: 0;
+    font-size: 1.2rem;
+    letter-spacing: -0.02em;
+}
+
+.source-form {
+    display: grid;
+    grid-template-columns: minmax(180px, 0.7fr) minmax(280px, 1.5fr) auto;
+    gap: 14px;
+    align-items: end;
+}
+
+.source-form label {
+    display: grid;
+    gap: 7px;
+    color: #5e5e5e;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.source-form input {
+    width: 100%;
+    min-height: 42px;
+    padding: 10px 11px;
+    color: #222;
+    background: white;
+    border: 1px solid #d9d9d9;
+    border-radius: 8px;
+    outline: none;
+}
+
+.source-form input:focus {
+    border-color: #a9a600;
+    box-shadow: 0 0 0 3px rgb(255 252 0 / 45%);
+}
+
+.form-hint {
+    margin: 14px 0 0;
+    color: #777;
+    font-size: 0.84rem;
+    line-height: 1.5;
+}
+
+.source-list {
+    display: grid;
+    gap: 12px;
+}
+
+.source-card {
+    padding: 18px;
+    background: #fafafa;
+    border: 1px solid #e5e5e5;
+    border-radius: 12px;
+}
+
+.source-card-main {
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+    align-items: flex-start;
+}
+
+.source-card h4 {
+    margin: 0 0 7px;
+    font-size: 1rem;
+}
+
+.source-path {
+    display: block;
+    max-width: 650px;
+    overflow: auto;
+    color: #555;
+    font-size: 0.78rem;
+    white-space: nowrap;
+}
+
+.source-card-meta {
+    margin-top: 12px;
+    color: #777;
+    font-size: 0.82rem;
+}
+
+.source-card-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 18px;
+}
+
+.primary-button,
+.secondary-button,
+.danger-button {
+    min-height: 38px;
+    padding: 8px 12px;
+    cursor: pointer;
+    border-radius: 8px;
+    font-weight: 700;
+}
+
+.primary-button {
+    color: #171717;
+    background: #fffc00;
+    border: 1px solid #ddd900;
+}
+
+.secondary-button {
+    color: #333;
+    background: white;
+    border: 1px solid #d4d4d4;
+}
+
+.danger-button {
+    color: #a22323;
+    background: #fff5f5;
+    border: 1px solid #f1c9c9;
+}
+
+.primary-button:disabled,
+.secondary-button:disabled,
+.danger-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.source-status {
+    flex: 0 0 auto;
+    padding: 5px 8px;
+    color: #555;
+    background: #ededed;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+.source-status-completed {
+    color: #17653d;
+    background: #e3f6eb;
+}
+
+.source-status-running {
+    color: #6b5700;
+    background: #fff8cc;
+}
+
+.source-status-failed {
+    color: #972525;
+    background: #ffe8e8;
+}
+
+.scan-result-banner {
+    display: grid;
+    gap: 4px;
+    padding: 15px 17px;
+    margin-bottom: 20px;
+    color: #17653d;
+    background: #eaf8ef;
+    border: 1px solid #c9ebd5;
+    border-radius: 12px;
+}
+
+.scan-result-banner span {
+    color: #31714b;
+    font-size: 0.88rem;
+}
+
+@media (max-width: 900px) {
+    .source-form {
+        grid-template-columns: 1fr;
+    }
+}
+
 @media (max-width: 780px) {
     .memory-viewer-backdrop {
         padding: 10px;
@@ -525,6 +712,24 @@ button {
     }
 
     .flashback-date-input {
+        flex: 1;
+    }
+
+    .settings-section {
+        padding: 18px;
+    }
+
+    .source-card-main,
+    .settings-section-header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .source-card-actions {
+        width: 100%;
+    }
+
+    .source-card-actions button {
         flex: 1;
     }
 }

@@ -51,3 +51,35 @@ export type FlashbackResponse = {
     date: string;
     memories: FlashbackMemory[];
 };
+
+export type MemorySource = {
+    id: string;
+    name: string;
+    rootPath: string;
+    lastScanAt: string | null;
+    lastScanStatus: string | null;
+    createdAt: string;
+    updatedAt: string;
+};
+
+export type CreateMemorySourceRequest = {
+    name: string;
+    rootPath: string;
+};
+
+export type ScanMemorySourceResponse = {
+    sourceId: string;
+    sourcePath: string;
+    status: string;
+    filesVisited: number;
+    mainImages: number;
+    mainVideos: number;
+    overlays: number;
+    indexedMemories: number;
+    attachedOverlays: number;
+    unmatchedOverlays: number;
+    unsupportedFiles: number;
+    unreadableFiles: number;
+    startedAt: string;
+    completedAt: string;
+};

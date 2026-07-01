@@ -13,6 +13,7 @@ import type {
   TimelineYear,
 } from "./api/types";
 import { FlashbacksPage } from "./components/FlashbacksPage";
+import { SettingsPage } from "./components/SettingsPage";
 
 const PAGE_SIZE = 48;
 
@@ -66,9 +67,9 @@ function App() {
       string | null
   >(null);
 
-  const [activeView, setActiveView] = useState<"archive" | "flashbacks">(
-      "archive",
-  );
+  const [activeView, setActiveView] = useState<
+      "archive" | "flashbacks" | "settings"
+  >("archive");
 
   /*
    * Prevents an older response from replacing newer results
@@ -262,6 +263,15 @@ function App() {
               >
                 Flashbacks
               </button>
+              <button
+                  className={`sidebar-main-link ${
+                      activeView === "settings" ? "is-active" : ""
+                  }`}
+                  onClick={() => setActiveView("settings")}
+                  type="button"
+              >
+                Settings
+              </button>
             </section>
             <p className="sidebar-label">Timeline</p>
 
@@ -430,8 +440,15 @@ function App() {
                   </>
               )}
             </section>
-        ) : (
+        ) : activeView === "flashbacks" ? (
             <FlashbacksPage onOpenMemory={(memoryId) => void openMemory(memoryId)} />
+        ) : (
+            <SettingsPage
+                onSourceScanned={() => {
+                  setActiveView("archive");
+                  setSelectedMonth(undefined);
+                }}
+            />
         )}
 
         <MemoryViewer

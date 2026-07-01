@@ -1,19 +1,33 @@
 import type {
+    CreateMemorySourceRequest,
     FlashbackResponse,
     MemoryDetail,
     MemoryPage,
+    MemorySource,
+    ScanMemorySourceResponse,
     TimelineMonth,
     TimelineYear,
 } from "./types";
 
-async function request<T>(path: string): Promise<T> {
-    const response = await fetch(path);
+async function request<T>(
+    path: string,
+    options?: RequestInit,
+): Promise<T> {
+    const response = await fetch(path, options);
 
     if (!response.ok) {
-        throw new Error(`Request failed with status ${response.status}`);
+        const errorMessage = await response.text();
+
+        throw new Error(
+            errorMessage || `Request failed with status ${response.status}`,
+        );
     }
 
-    return await response.json() as Promise<T>;
+    if (response.status === 204) {
+        return undefined as T;
+    }
+
+    return response.json() as Promise<T>;
 }
 
 export function getTimelineYears(): Promise<TimelineYear[]> {
@@ -58,4 +72,37 @@ export function getFlashbacksByDate(
     date: string,
 ): Promise<FlashbackResponse> {
     return request<FlashbackResponse>(`/api/flashbacks?date=${date}`);
+}
+
+export function getMemorySources(): Promise<MemorySource[]> {
+    return request<MemorySource[]>("/api/sources");
+}
+
+export function createMemorySource(
+    source: CreateMemorySourceRequest,
+): Promise<MemorySource> {
+    return request<MemorySource>("/api/sources", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify(source),
+    });
+}
+
+export function deleteMemorySource(sourceId: string): Promise<void> {
+    return request<void>(`/api/sources/${sourceId}`, {
+        method: "DELETE",
+    });
+}
+
+export function scanMemorySource(
+    sourceId: string,
+): Promise<ScanMemorySourceResponse> {
+    return request<ScanMemorySourceResponse>(
+        `/api/sources/${sourceId}/scan`,
+        {
+            method: "POST",
+        },
+    );
 }
