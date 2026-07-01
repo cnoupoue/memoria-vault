@@ -5,6 +5,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PathVariable;
 
 @RestController
 @RequestMapping("/api/memories")
@@ -24,5 +25,10 @@ public class SnapMemoryController {
             @RequestParam(defaultValue = "60") int size
     ) {
         return snapMemoryService.findAll(year, month, page, size);
+    }
+
+    @GetMapping("/{id}")
+    public MemoryDetailResponse findById(@PathVariable String id) {
+        return snapMemoryService.findById(id);
     }
 }

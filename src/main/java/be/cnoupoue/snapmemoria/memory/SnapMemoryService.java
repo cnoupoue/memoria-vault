@@ -1,18 +1,16 @@
 package be.cnoupoue.snapmemoria.memory;
 
-import be.cnoupoue.snapmemoria.memory.api.MemoryPageResponse;
-import be.cnoupoue.snapmemoria.memory.api.MemoryResponse;
+import be.cnoupoue.snapmemoria.memory.api.*;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import be.cnoupoue.snapmemoria.memory.api.TimelineMonthResponse;
-import be.cnoupoue.snapmemoria.memory.api.TimelineYearResponse;
-import be.cnoupoue.snapmemoria.memory.api.FlashbackMemoryResponse;
-import be.cnoupoue.snapmemoria.memory.api.FlashbackResponse;
+
 import java.time.LocalDate;
 import java.util.List;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 @Service
 @Transactional(readOnly = true)
@@ -113,6 +111,27 @@ public class SnapMemoryService {
         return new FlashbackResponse(
                 date.toString(),
                 memories
+        );
+    }
+
+    public MemoryDetailResponse findById(String memoryId) {
+        SnapMemory memory = snapMemoryRepository.findById(memoryId)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Memory not found."
+                ));
+
+        return new MemoryDetailResponse(
+                memory.getId(),
+                memory.getCapturedAt(),
+                memory.getMediaType().name(),
+                memory.getOverlayPath() != null,
+                memory.getFileSizeBytes(),
+                memory.getLastModifiedAt(),
+                "/api/memories/%s/media".formatted(memory.getId()),
+                memory.getOverlayPath() == null
+                        ? null
+                        : "/api/memories/%s/overlay".formatted(memory.getId())
         );
     }
 
