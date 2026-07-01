@@ -35,39 +35,78 @@ SnapMemoria is designed to be local-first.
 * Node.js 22 or later
 * npm
 * FFmpeg for video thumbnails
+* Git
+* Make
 
-### Run the backend
+On macOS, you can install FFmpeg with:
 
 ```bash
-./mvnw spring-boot:run
+brew install ffmpeg
 ```
 
-The backend starts on:
+Verify the installation:
+
+```bash
+ffmpeg -version
+```
+
+### Clone and install
+
+```bash
+git clone https://github.com/cameronnoupoue/snapmemoria.git
+cd snapmemoria
+make install
+```
+
+### Start the application
+
+```bash
+make dev
+```
+
+This starts:
 
 ```text
-http://127.0.0.1:8080
+Backend:  http://127.0.0.1:8080
+Frontend: http://localhost:5173
 ```
 
-You can verify it with:
-
-```bash
-curl http://127.0.0.1:8080/actuator/health
-```
-
-### Run the frontend
-
-In a second terminal:
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Then open:
+Open the frontend in your browser:
 
 ```text
 http://localhost:5173
+```
+
+Stop both services with:
+
+```text
+Ctrl + C
+```
+
+### Run services separately
+
+Start only the backend:
+
+```bash
+make run-backend
+```
+
+Start only the frontend:
+
+```bash
+make run-frontend
+```
+
+Check that the backend is running:
+
+```bash
+make health
+```
+
+Or directly:
+
+```bash
+curl http://127.0.0.1:8080/actuator/health
 ```
 
 ### Add your Snapchat export
@@ -89,19 +128,62 @@ snapchat-memories/
 
 Do not select an individual `memories` folder when your export contains multiple folders. Select the parent `snapchat-memories` folder instead.
 
-## Development
+## Local commands
 
-Run all local quality checks:
+SnapMemoria provides a `Makefile` for common development tasks.
 
 ```bash
-npm run verify
+# Show every available command
+make help
+
+# Install root tooling and frontend dependencies
+make install
+
+# Start backend and frontend together
+make dev
+
+# Start only the Spring Boot backend
+make run-backend
+
+# Start only the React frontend
+make run-frontend
+
+# Format Java and frontend code automatically
+make format
+
+# Check formatting without changing files
+make format-check
+
+# Run frontend linting
+make lint
+
+# Automatically fix lint issues where possible
+make lint-fix
+
+# Run backend and frontend tests
+make test
+
+# Build backend and frontend production artifacts
+make build
+
+# Run all formatting checks, linting, tests, and builds
+make verify
+
+# Remove generated build artifacts
+make clean
 ```
 
-The build compiles the backend with Java 21 compatibility. If you have several JDKs installed, any active `JAVA_HOME` pointing to Java 21 or later is accepted.
+## Development
+
+Run all local quality checks before opening a pull request:
+
+```bash
+make verify
+```
 
 This validates:
 
-* Java formatting with Spotless
+* Java formatting with Spotless and Google Java Format
 * Frontend formatting with Prettier
 * ESLint checks
 * Backend tests
@@ -112,13 +194,27 @@ This validates:
 Format the complete project:
 
 ```bash
-npm run format
+make format
 ```
+
+Automatically fix supported lint and formatting issues:
+
+```bash
+npm run fix
+```
+
+The backend is built with Java 21 compatibility. If you have several JDKs installed, ensure that `JAVA_HOME` points to Java 21 or a compatible later version.
 
 For technical architecture, development workflow, testing, and contribution guidance, see:
 
 * [Technical contribution guide](docs/technical-contribution-guide.md)
 * [Contributing guide](docs/CONTRIBUTING.md)
+
+## Security
+
+Please report security issues privately.
+
+See [SECURITY.md](docs/SECURITY.md) for the security policy and reporting guidance.
 
 ## Contributing
 
@@ -128,18 +224,23 @@ Before opening a pull request:
 
 1. Create a focused branch.
 2. Follow Conventional Commit messages.
-3. Run `npm run verify`.
-4. Do not include personal Memories, local databases, cached thumbnails, or private paths in your changes.
+3. Run `make verify`.
+4. Add or update tests when behavior changes.
+5. Do not include personal Memories, local databases, cached thumbnails, private paths, secrets, or exported media files.
 
 Useful branch names:
 
 ```text
 feature/favorites
+feature/source-availability
 fix/video-thumbnail-error
 refactor/memory-scanner
 test/flashback-api
 docs/setup-guide
+ci/pull-request-checks
 ```
+
+When you open a pull request, complete the included template and add screenshots for meaningful interface changes.
 
 ## Support the project
 
