@@ -70,4 +70,12 @@ public class MemorySourceService {
                 source.getUpdatedAt()
         );
     }
+
+    public void delete(String sourceId) {
+        if (!memorySourceRepository.existsById(sourceId)) {
+            throw new IllegalArgumentException("Memory source not found.");
+        }
+
+        memorySourceRepository.deleteById(sourceId);
+    }
 }

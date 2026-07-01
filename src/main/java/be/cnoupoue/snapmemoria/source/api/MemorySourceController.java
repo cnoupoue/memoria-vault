@@ -3,13 +3,8 @@ package be.cnoupoue.snapmemoria.source.api;
 import be.cnoupoue.snapmemoria.source.MemorySourceService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import be.cnoupoue.snapmemoria.indexing.MemorySourceScanner;
-import org.springframework.web.bind.annotation.PathVariable;
 
 import java.util.List;
 
@@ -45,5 +40,11 @@ public class MemorySourceController {
     @PostMapping("/{id}/scan")
     public ScanMemorySourceResponse scan(@PathVariable String id) {
         return memorySourceScanner.scan(id);
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable String id) {
+        memorySourceService.delete(id);
     }
 }
