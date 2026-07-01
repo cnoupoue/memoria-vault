@@ -9,6 +9,7 @@ import jakarta.persistence.Table;
 import lombok.Getter;
 
 @Entity
+@Getter
 @Table(name = "memories")
 public class SnapMemory {
 
@@ -31,7 +32,6 @@ public class SnapMemory {
     @Column(name = "main_path", nullable = false)
     private String mainPath;
 
-    @Getter
     @Column(name = "overlay_path")
     private String overlayPath;
 
