@@ -54,4 +54,21 @@ public class MemorySource {
         this.updatedAt = updatedAt;
     }
 
+    public void markScanStarted(String startedAt) {
+        this.lastScanAt = startedAt;
+        this.lastScanStatus = "RUNNING";
+        this.updatedAt = startedAt;
+    }
+
+    public void markScanCompleted(String completedAt) {
+        this.lastScanAt = completedAt;
+        this.lastScanStatus = "COMPLETED";
+        this.updatedAt = completedAt;
+    }
+
+    public void markScanFailed(String failedAt) {
+        this.lastScanAt = failedAt;
+        this.lastScanStatus = "FAILED";
+        this.updatedAt = failedAt;
+    }
 }

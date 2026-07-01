@@ -8,7 +8,11 @@ public record ScanMemorySourceResponse(
         long mainImages,
         long mainVideos,
         long overlays,
+        long indexedMemories,
+        long attachedOverlays,
+        long unmatchedOverlays,
         long unsupportedFiles,
+        long unreadableFiles,
         String startedAt,
         String completedAt
 ) {
