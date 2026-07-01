@@ -77,12 +77,6 @@ Open the frontend in your browser:
 http://localhost:5173
 ```
 
-Stop both services with:
-
-```text
-Ctrl + C
-```
-
 ### Run services separately
 
 Start only the backend:
@@ -101,12 +95,6 @@ Check that the backend is running:
 
 ```bash
 make health
-```
-
-Or directly:
-
-```bash
-curl http://127.0.0.1:8080/actuator/health
 ```
 
 ### Add your Snapchat export
@@ -215,32 +203,6 @@ For technical architecture, development workflow, testing, and contribution guid
 Please report security issues privately.
 
 See [SECURITY.md](docs/SECURITY.md) for the security policy and reporting guidance.
-
-## Contributing
-
-Contributions, ideas, bug reports, and feature requests are welcome.
-
-Before opening a pull request:
-
-1. Create a focused branch.
-2. Follow Conventional Commit messages.
-3. Run `make verify`.
-4. Add or update tests when behavior changes.
-5. Do not include personal Memories, local databases, cached thumbnails, private paths, secrets, or exported media files.
-
-Useful branch names:
-
-```text
-feature/favorites
-feature/source-availability
-fix/video-thumbnail-error
-refactor/memory-scanner
-test/flashback-api
-docs/setup-guide
-ci/pull-request-checks
-```
-
-When you open a pull request, complete the included template and add screenshots for meaningful interface changes.
 
 ## Support the project
 
