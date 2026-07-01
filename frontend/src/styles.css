@@ -661,6 +661,22 @@ button {
     font-size: 0.88rem;
 }
 
+.scan-progress-track {
+    width: min(520px, 100%);
+    height: 8px;
+    overflow: hidden;
+    margin-top: 4px;
+    background: #cbe8d5;
+    border-radius: 999px;
+}
+
+.scan-progress-value {
+    height: 100%;
+    background: #23824d;
+    border-radius: inherit;
+    transition: width 350ms ease;
+}
+
 @media (max-width: 900px) {
     .source-form {
         grid-template-columns: 1fr;

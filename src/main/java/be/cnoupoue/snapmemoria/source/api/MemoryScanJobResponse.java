@@ -1,19 +1,28 @@
 package be.cnoupoue.snapmemoria.source.api;
 
-public record ScanMemorySourceResponse(
+public record MemoryScanJobResponse(
+        String id,
         String sourceId,
-        String sourcePath,
         String status,
-        long filesVisited,
+
+        long totalFiles,
+        long filesProcessed,
+
         long mainImages,
         long mainVideos,
         long overlays,
+
         long indexedMemories,
         long attachedOverlays,
         long unmatchedOverlays,
+
         long unsupportedFiles,
         long unreadableFiles,
+
+        String errorMessage,
+
         String startedAt,
-        String completedAt
+        String completedAt,
+        String updatedAt
 ) {
 }

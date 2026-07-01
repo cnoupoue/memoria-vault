@@ -4,8 +4,9 @@ import be.cnoupoue.snapmemoria.source.MemorySourceService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
-import be.cnoupoue.snapmemoria.indexing.MemorySourceScanner;
-
+import be.cnoupoue.snapmemoria.indexing.MemoryScanJobService;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import java.util.List;
 
 @RestController
@@ -13,15 +14,14 @@ import java.util.List;
 public class MemorySourceController {
 
     private final MemorySourceService memorySourceService;
-    private final MemorySourceScanner memorySourceScanner;
-
+    private final MemoryScanJobService memoryScanJobService;
 
     public MemorySourceController(
             MemorySourceService memorySourceService,
-            MemorySourceScanner memorySourceScanner
+            MemoryScanJobService memoryScanJobService
     ) {
         this.memorySourceService = memorySourceService;
-        this.memorySourceScanner = memorySourceScanner;
+        this.memoryScanJobService = memoryScanJobService;
     }
 
     @PostMapping
@@ -38,8 +38,11 @@ public class MemorySourceController {
     }
 
     @PostMapping("/{id}/scan")
-    public ScanMemorySourceResponse scan(@PathVariable String id) {
-        return memorySourceScanner.scan(id);
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public MemoryScanJobResponse scan(@PathVariable String id) {
+        return MemoryScanJobController.toResponse(
+                memoryScanJobService.startScan(id)
+        );
     }
 
     @DeleteMapping("/{id}")

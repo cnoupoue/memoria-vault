@@ -67,19 +67,28 @@ export type CreateMemorySourceRequest = {
     rootPath: string;
 };
 
-export type ScanMemorySourceResponse = {
+export type MemoryScanJob = {
+    id: string;
     sourceId: string;
-    sourcePath: string;
-    status: string;
-    filesVisited: number;
+    status: "RUNNING" | "COMPLETED" | "FAILED";
+
+    totalFiles: number;
+    filesProcessed: number;
+
     mainImages: number;
     mainVideos: number;
     overlays: number;
+
     indexedMemories: number;
     attachedOverlays: number;
     unmatchedOverlays: number;
+
     unsupportedFiles: number;
     unreadableFiles: number;
+
+    errorMessage: string | null;
+
     startedAt: string;
-    completedAt: string;
+    completedAt: string | null;
+    updatedAt: string;
 };

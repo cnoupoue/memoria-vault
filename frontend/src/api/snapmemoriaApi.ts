@@ -4,7 +4,7 @@ import type {
     MemoryDetail,
     MemoryPage,
     MemorySource,
-    ScanMemorySourceResponse,
+    MemoryScanJob,
     TimelineMonth,
     TimelineYear,
 } from "./types";
@@ -96,13 +96,16 @@ export function deleteMemorySource(sourceId: string): Promise<void> {
     });
 }
 
-export function scanMemorySource(
+export function startMemorySourceScan(
     sourceId: string,
-): Promise<ScanMemorySourceResponse> {
-    return request<ScanMemorySourceResponse>(
-        `/api/sources/${sourceId}/scan`,
-        {
-            method: "POST",
-        },
-    );
+): Promise<MemoryScanJob> {
+    return request<MemoryScanJob>(`/api/sources/${sourceId}/scan`, {
+        method: "POST",
+    });
+}
+
+export function getMemoryScanJob(
+    scanJobId: string,
+): Promise<MemoryScanJob> {
+    return request<MemoryScanJob>(`/api/scans/${scanJobId}`);
 }

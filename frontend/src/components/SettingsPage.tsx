@@ -3,11 +3,12 @@ import {
     createMemorySource,
     deleteMemorySource,
     getMemorySources,
-    scanMemorySource,
+    getMemoryScanJob,
+    startMemorySourceScan,
 } from "../api/snapmemoriaApi";
 import type {
     MemorySource,
-    ScanMemorySourceResponse,
+    MemoryScanJob,
 } from "../api/types";
 
 function formatDate(value: string | null): string {
@@ -59,8 +60,7 @@ export function SettingsPage({
     );
 
     const [error, setError] = useState<string | null>(null);
-    const [scanResult, setScanResult] =
-        useState<ScanMemorySourceResponse | null>(null);
+    const [scanJob, setScanJob] = useState<MemoryScanJob | null>(null);
 
     async function loadSources() {
         setIsLoading(true);
@@ -92,7 +92,7 @@ export function SettingsPage({
 
         setIsCreating(true);
         setError(null);
-        setScanResult(null);
+        setScanJob(null);
 
         try {
             const createdSource = await createMemorySource({
@@ -116,24 +116,68 @@ export function SettingsPage({
         }
     }
 
+    function getProgressPercent(job: MemoryScanJob): number {
+        if (job.totalFiles === 0) {
+            return 0;
+        }
+
+        return Math.min(
+            100,
+            Math.round((job.filesProcessed / job.totalFiles) * 100),
+        );
+    }
+
     async function handleScan(source: MemorySource) {
         setScanningSourceId(source.id);
         setError(null);
-        setScanResult(null);
+        setScanJob(null);
 
         try {
-            const result = await scanMemorySource(source.id);
+            const startedJob = await startMemorySourceScan(source.id);
 
-            setScanResult(result);
+            setScanJob(startedJob);
 
-            await loadSources();
-            onSourceScanned();
+            const pollingInterval = window.setInterval(async () => {
+                try {
+                    const updatedJob = await getMemoryScanJob(startedJob.id);
+
+                    setScanJob(updatedJob);
+
+                    if (
+                        updatedJob.status === "COMPLETED" ||
+                        updatedJob.status === "FAILED"
+                    ) {
+                        window.clearInterval(pollingInterval);
+
+                        setScanningSourceId(null);
+
+                        await loadSources();
+
+                        if (updatedJob.status === "COMPLETED") {
+                            onSourceScanned();
+                        } else {
+                            setError(
+                                updatedJob.errorMessage ??
+                                "The scan failed unexpectedly.",
+                            );
+                        }
+                    }
+                } catch {
+                    window.clearInterval(pollingInterval);
+
+                    setScanningSourceId(null);
+
+                    setError(
+                        "Could not retrieve scan progress.",
+                    );
+                }
+            }, 1000);
         } catch {
-            setError(
-                "Could not scan this source. Check that the drive is connected and the configured folder is available.",
-            );
-        } finally {
             setScanningSourceId(null);
+
+            setError(
+                "Could not start this scan. A scan may already be running for this source.",
+            );
         }
     }
 
@@ -148,7 +192,7 @@ export function SettingsPage({
 
         setDeletingSourceId(source.id);
         setError(null);
-        setScanResult(null);
+        setScanJob(null);
 
         try {
             await deleteMemorySource(source.id);
@@ -174,13 +218,47 @@ export function SettingsPage({
 
             {error && <div className="error-banner">{error}</div>}
 
-            {scanResult && (
+            {scanJob && (
                 <div className="scan-result-banner">
-                    <strong>Scan completed</strong>
-                    <span>
-            {scanResult.indexedMemories} Memories indexed ·{" "}
-                        {scanResult.mainImages} photos · {scanResult.mainVideos} videos
-          </span>
+                    <strong>
+                        {scanJob.status === "RUNNING"
+                            ? "Scanning Memories…"
+                            : scanJob.status === "COMPLETED"
+                                ? "Scan completed"
+                                : "Scan failed"}
+                    </strong>
+
+                    {scanJob.status === "RUNNING" ? (
+                        <>
+        <span>
+          {scanJob.totalFiles === 0
+              ? "Counting files…"
+              : `${scanJob.filesProcessed.toLocaleString()} / ${scanJob.totalFiles.toLocaleString()} files processed`}
+        </span>
+
+                            {scanJob.totalFiles > 0 && (
+                                <div
+                                    aria-label={`${getProgressPercent(scanJob)}% complete`}
+                                    className="scan-progress-track"
+                                    role="progressbar"
+                                    aria-valuemax={100}
+                                    aria-valuemin={0}
+                                    aria-valuenow={getProgressPercent(scanJob)}
+                                >
+                                    <div
+                                        className="scan-progress-value"
+                                        style={{ width: `${getProgressPercent(scanJob)}%` }}
+                                    />
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        <span>
+        {scanJob.indexedMemories.toLocaleString()} Memories indexed ·{" "}
+                            {scanJob.mainImages.toLocaleString()} photos ·{" "}
+                            {scanJob.mainVideos.toLocaleString()} videos
+      </span>
+                    )}
                 </div>
             )}
 
