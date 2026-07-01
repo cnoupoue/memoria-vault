@@ -6,5 +6,7 @@ public record MemorySourceResponse(
     String rootPath,
     String lastScanAt,
     String lastScanStatus,
+    String availabilityStatus,
+    String availabilityMessage,
     String createdAt,
     String updatedAt) {}

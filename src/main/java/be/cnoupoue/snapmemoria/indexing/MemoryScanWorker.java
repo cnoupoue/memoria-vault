@@ -62,11 +62,18 @@ public class MemoryScanWorker {
             .findById(scanJobId)
             .orElseThrow(() -> new IllegalStateException("Scan job not found."));
 
-    String message = exception.getMessage();
-
-    scanJob.markFailed(
-        message == null ? "The scan failed unexpectedly." : message, Instant.now().toString());
+    scanJob.markFailed(toUserFacingMessage(exception), Instant.now().toString());
 
     memoryScanJobRepository.save(scanJob);
+  }
+
+  private String toUserFacingMessage(RuntimeException exception) {
+    String message = exception.getMessage();
+
+    if (message == null || message.isBlank()) {
+      return "The scan failed unexpectedly.";
+    }
+
+    return message;
   }
 }

@@ -1,6 +1,10 @@
 package be.cnoupoue.snapmemoria.indexing;
 
+import be.cnoupoue.snapmemoria.source.MemorySource;
 import be.cnoupoue.snapmemoria.source.MemorySourceRepository;
+import be.cnoupoue.snapmemoria.source.SourceAvailability;
+import be.cnoupoue.snapmemoria.source.SourceAvailabilityService;
+import be.cnoupoue.snapmemoria.source.SourceUnavailableException;
 import java.time.Instant;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -13,19 +17,31 @@ public class MemoryScanJobService {
   private final MemorySourceRepository memorySourceRepository;
   private final MemoryScanJobRepository memoryScanJobRepository;
   private final MemoryScanWorker memoryScanWorker;
+  private final SourceAvailabilityService sourceAvailabilityService;
 
   public MemoryScanJobService(
       MemorySourceRepository memorySourceRepository,
       MemoryScanJobRepository memoryScanJobRepository,
-      MemoryScanWorker memoryScanWorker) {
+      MemoryScanWorker memoryScanWorker,
+      SourceAvailabilityService sourceAvailabilityService) {
     this.memorySourceRepository = memorySourceRepository;
     this.memoryScanJobRepository = memoryScanJobRepository;
     this.memoryScanWorker = memoryScanWorker;
+    this.sourceAvailabilityService = sourceAvailabilityService;
   }
 
   public MemoryScanJob startScan(String sourceId) {
-    if (!memorySourceRepository.existsById(sourceId)) {
-      throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Memory source not found.");
+    MemorySource source =
+        memorySourceRepository
+            .findById(sourceId)
+            .orElseThrow(
+                () ->
+                    new ResponseStatusException(HttpStatus.NOT_FOUND, "Memory source not found."));
+
+    SourceAvailability availability = sourceAvailabilityService.check(source);
+
+    if (!availability.isAvailable()) {
+      throw new SourceUnavailableException();
     }
 
     if (memoryScanJobRepository.existsBySourceIdAndStatus(sourceId, "RUNNING")) {

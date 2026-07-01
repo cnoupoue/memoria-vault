@@ -58,8 +58,18 @@ export type MemorySource = {
   rootPath: string;
   lastScanAt: string | null;
   lastScanStatus: string | null;
+  availabilityStatus: SourceAvailabilityStatus;
+  availabilityMessage: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type SourceAvailabilityStatus =
+  'AVAILABLE' | 'UNAVAILABLE' | 'NOT_A_DIRECTORY' | 'NOT_READABLE';
+
+export type SourceAvailability = {
+  availabilityStatus: SourceAvailabilityStatus;
+  availabilityMessage: string;
 };
 
 export type CreateMemorySourceRequest = {

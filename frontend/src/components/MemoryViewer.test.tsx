@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryViewer } from './MemoryViewer';
 
@@ -46,5 +46,36 @@ describe('MemoryViewer', () => {
     );
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('shows an unavailable media message when media cannot be loaded', () => {
+    render(
+      <MemoryViewer
+        error={null}
+        isLoading={false}
+        memory={{
+          id: 'memory-1',
+          capturedAt: '2020-06-10',
+          mediaType: 'IMAGE',
+          hasOverlay: false,
+          fileSizeBytes: 1_500_000,
+          lastModifiedAt: '2020-06-10T10:00:00Z',
+          mediaUrl: '/api/memories/memory-1/media',
+          overlayUrl: null,
+        }}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.error(screen.getByRole('img'));
+
+    expect(
+      screen.getByText('This Memory is currently unavailable.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Connect the drive containing this source and try again.',
+      ),
+    ).toBeInTheDocument();
   });
 });

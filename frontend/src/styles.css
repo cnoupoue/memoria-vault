@@ -355,10 +355,12 @@ button {
 
 .memory-viewer-state {
   display: grid;
+  gap: 8px;
   min-height: 380px;
   place-items: center;
   padding: 30px;
   color: #e0e0e0;
+  text-align: center;
 }
 
 .memory-viewer-error {
@@ -579,9 +581,19 @@ button {
 }
 
 .source-card-meta {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
   margin-top: 12px;
   color: #777;
   font-size: 0.82rem;
+}
+
+.source-availability-message {
+  margin: 12px 0 0;
+  color: #5f5f5f;
+  font-size: 0.86rem;
+  line-height: 1.45;
 }
 
 .source-card-actions {
@@ -646,6 +658,18 @@ button {
 }
 
 .source-status-failed {
+  color: #972525;
+  background: #ffe8e8;
+}
+
+.source-status-available {
+  color: #17653d;
+  background: #e3f6eb;
+}
+
+.source-status-unavailable,
+.source-status-not_a_directory,
+.source-status-not_readable {
   color: #972525;
   background: #ffe8e8;
 }

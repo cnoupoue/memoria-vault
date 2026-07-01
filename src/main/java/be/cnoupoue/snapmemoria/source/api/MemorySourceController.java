@@ -32,6 +32,11 @@ public class MemorySourceController {
     return memorySourceService.findAll();
   }
 
+  @GetMapping("/{id}/availability")
+  public SourceAvailabilityResponse checkAvailability(@PathVariable String id) {
+    return memorySourceService.checkAvailability(id);
+  }
+
   @PostMapping("/{id}/scan")
   @ResponseStatus(HttpStatus.ACCEPTED)
   public MemoryScanJobResponse scan(@PathVariable String id) {

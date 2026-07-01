@@ -5,19 +5,50 @@ import type {
   MemoryPage,
   MemorySource,
   MemoryScanJob,
+  SourceAvailability,
   TimelineMonth,
   TimelineYear,
 } from './types';
+
+type ApiErrorResponse = {
+  status: number;
+  code: string;
+  message: string;
+  timestamp: string;
+};
+
+const ERROR_MESSAGES: Record<string, string> = {
+  SOURCE_UNAVAILABLE:
+    'The configured source folder is currently unavailable. Connect the drive containing this source, then refresh its status.',
+};
+
+export class SnapmemoriaApiError extends Error {
+  readonly status: number;
+  readonly code: string;
+  readonly timestamp: string | null;
+
+  constructor(error: ApiErrorResponse) {
+    super(ERROR_MESSAGES[error.code] ?? error.message);
+    this.name = 'SnapmemoriaApiError';
+    this.status = error.status;
+    this.code = error.code;
+    this.timestamp = error.timestamp;
+  }
+}
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(path, options);
 
   if (!response.ok) {
-    const errorMessage = await response.text();
+    const contentType = response.headers.get('Content-Type') ?? '';
 
-    throw new Error(
-      errorMessage || `Request failed with status ${response.status}`,
-    );
+    if (contentType.includes('application/json')) {
+      const apiError = (await response.json()) as ApiErrorResponse;
+
+      throw new SnapmemoriaApiError(apiError);
+    }
+
+    throw new Error(`Request failed with status ${response.status}`);
   }
 
   if (response.status === 204) {
@@ -71,6 +102,12 @@ export function getFlashbacksByDate(date: string): Promise<FlashbackResponse> {
 
 export function getMemorySources(): Promise<MemorySource[]> {
   return request<MemorySource[]>('/api/sources');
+}
+
+export function getMemorySourceAvailability(
+  sourceId: string,
+): Promise<SourceAvailability> {
+  return request<SourceAvailability>(`/api/sources/${sourceId}/availability`);
 }
 
 export function createMemorySource(

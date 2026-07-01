@@ -10,10 +10,16 @@ import {
   deleteMemorySource,
   getLatestMemorySourceScan,
   getMemoryScanJob,
+  getMemorySourceAvailability,
   getMemorySources,
+  SnapmemoriaApiError,
   startMemorySourceScan,
 } from '../api/snapmemoriaApi';
-import type { MemorySource, MemoryScanJob } from '../api/types';
+import type {
+  MemorySource,
+  MemoryScanJob,
+  SourceAvailabilityStatus,
+} from '../api/types';
 
 function formatDate(value: string | null): string {
   if (!value) {
@@ -43,6 +49,34 @@ function getStatusLabel(status: string | null): string {
     .replace(/(^|\s)\S/g, (letter) => letter.toUpperCase());
 }
 
+function getAvailabilityLabel(status: SourceAvailabilityStatus): string {
+  switch (status) {
+    case 'AVAILABLE':
+      return 'Available';
+    case 'UNAVAILABLE':
+      return 'Folder moved or missing';
+    case 'NOT_A_DIRECTORY':
+      return 'USB drive unavailable';
+    case 'NOT_READABLE':
+      return 'Folder is not readable';
+  }
+}
+
+function getSourceStateLabel(
+  source: MemorySource,
+  isScanning: boolean,
+): string {
+  if (isScanning) {
+    return 'Scan in progress';
+  }
+
+  if (source.lastScanStatus === 'FAILED') {
+    return 'Last scan failed';
+  }
+
+  return getAvailabilityLabel(source.availabilityStatus);
+}
+
 type SettingsPageProps = {
   onSourceScanned: () => void;
 };
@@ -56,6 +90,8 @@ export function SettingsPage({ onSourceScanned }: SettingsPageProps) {
   const [isCreating, setIsCreating] = useState(false);
   const [scanningSourceId, setScanningSourceId] = useState<string | null>(null);
   const [deletingSourceId, setDeletingSourceId] = useState<string | null>(null);
+  const [refreshingAvailabilitySourceId, setRefreshingAvailabilitySourceId] =
+    useState<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [scanJob, setScanJob] = useState<MemoryScanJob | null>(null);
@@ -169,6 +205,25 @@ export function SettingsPage({ onSourceScanned }: SettingsPageProps) {
     void loadSources();
   }
 
+  async function handleRefreshSourceAvailability(source: MemorySource) {
+    setRefreshingAvailabilitySourceId(source.id);
+    setError(null);
+
+    try {
+      const availability = await getMemorySourceAvailability(source.id);
+
+      setSources((currentSources) =>
+        currentSources.map((item) =>
+          item.id === source.id ? { ...item, ...availability } : item,
+        ),
+      );
+    } catch {
+      setError('Could not refresh this source status.');
+    } finally {
+      setRefreshingAvailabilitySourceId(null);
+    }
+  }
+
   useEffect(() => {
     async function restoreRunningScan() {
       try {
@@ -246,9 +301,11 @@ export function SettingsPage({ onSourceScanned }: SettingsPageProps) {
 
       setScanJob(startedJob);
       startPolling(startedJob.id, source.id);
-    } catch {
+    } catch (scanError) {
       setError(
-        'Could not start this scan. A scan may already be running for this source.',
+        scanError instanceof SnapmemoriaApiError
+          ? scanError.message
+          : 'Could not start this scan. A scan may already be running for this source.',
       );
     }
   }
@@ -415,32 +472,44 @@ export function SettingsPage({ onSourceScanned }: SettingsPageProps) {
             {sources.map((source) => {
               const isScanning = scanningSourceId === source.id;
               const isDeleting = deletingSourceId === source.id;
+              const isRefreshingAvailability =
+                refreshingAvailabilitySourceId === source.id;
+              const isUnavailable = source.availabilityStatus !== 'AVAILABLE';
+              const sourceStateLabel = getSourceStateLabel(source, isScanning);
 
               return (
                 <article className="source-card" key={source.id}>
                   <div className="source-card-main">
                     <div>
                       <h4>{source.name}</h4>
-                      <code className="source-path">{source.rootPath}</code>
+                      <span className="source-path">Local source folder</span>
                     </div>
 
                     <span
-                      className={`source-status source-status-${(
-                        source.lastScanStatus ?? 'NOT_SCANNED'
+                      className={`source-status source-status-${(isScanning
+                        ? 'RUNNING'
+                        : source.availabilityStatus.toLowerCase()
                       ).toLowerCase()}`}
                     >
-                      {getStatusLabel(source.lastScanStatus)}
+                      {sourceStateLabel}
                     </span>
                   </div>
 
                   <div className="source-card-meta">
                     <span>Last scan: {formatDate(source.lastScanAt)}</span>
+                    <span>{getStatusLabel(source.lastScanStatus)}</span>
                   </div>
+
+                  {isUnavailable && (
+                    <p className="source-availability-message">
+                      {source.availabilityMessage}
+                    </p>
+                  )}
 
                   <div className="source-card-actions">
                     <button
                       className="primary-button"
-                      disabled={isScanning || isDeleting}
+                      disabled={isScanning || isDeleting || isUnavailable}
                       onClick={() => void handleScan(source)}
                       type="button"
                     >
@@ -448,8 +517,21 @@ export function SettingsPage({ onSourceScanned }: SettingsPageProps) {
                     </button>
 
                     <button
+                      className="secondary-button"
+                      disabled={isRefreshingAvailability}
+                      onClick={() =>
+                        void handleRefreshSourceAvailability(source)
+                      }
+                      type="button"
+                    >
+                      {isRefreshingAvailability
+                        ? 'Refreshing…'
+                        : 'Refresh status'}
+                    </button>
+
+                    <button
                       className="danger-button"
-                      disabled={isScanning || isDeleting}
+                      disabled={isDeleting}
                       onClick={() => void handleDelete(source)}
                       type="button"
                     >

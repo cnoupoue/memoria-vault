@@ -73,8 +73,10 @@ export function MemoryViewer({
             <div className="memory-viewer-media">
               {hasMediaError ? (
                 <div className="memory-viewer-state memory-viewer-error">
-                  This Memory could not be loaded. Check that the USB drive is
-                  connected and the source folder is available.
+                  <strong>This Memory is currently unavailable.</strong>
+                  <span>
+                    Connect the drive containing this source and try again.
+                  </span>
                 </div>
               ) : memory.mediaType === 'IMAGE' ? (
                 <img

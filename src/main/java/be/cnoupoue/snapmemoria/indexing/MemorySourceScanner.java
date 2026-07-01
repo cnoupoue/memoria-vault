@@ -4,6 +4,9 @@ import be.cnoupoue.snapmemoria.memory.SnapMemory;
 import be.cnoupoue.snapmemoria.memory.SnapMemoryType;
 import be.cnoupoue.snapmemoria.source.MemorySource;
 import be.cnoupoue.snapmemoria.source.MemorySourceRepository;
+import be.cnoupoue.snapmemoria.source.SourceAvailability;
+import be.cnoupoue.snapmemoria.source.SourceAvailabilityService;
+import be.cnoupoue.snapmemoria.source.SourceUnavailableDuringScanException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,12 +37,15 @@ public class MemorySourceScanner {
 
   private final MemorySourceRepository memorySourceRepository;
   private final MemoryIndexPersistence memoryIndexPersistence;
+  private final SourceAvailabilityService sourceAvailabilityService;
 
   public MemorySourceScanner(
       MemorySourceRepository memorySourceRepository,
-      MemoryIndexPersistence memoryIndexPersistence) {
+      MemoryIndexPersistence memoryIndexPersistence,
+      SourceAvailabilityService sourceAvailabilityService) {
     this.memorySourceRepository = memorySourceRepository;
     this.memoryIndexPersistence = memoryIndexPersistence;
+    this.sourceAvailabilityService = sourceAvailabilityService;
   }
 
   public ScanProgress scan(String sourceId, Consumer<ScanProgress> progressListener) {
@@ -50,7 +56,7 @@ public class MemorySourceScanner {
 
     Path rootPath = Path.of(source.getRootPath());
 
-    validateSourcePath(rootPath);
+    ensureAvailable(rootPath);
 
     String startedAt = Instant.now().toString();
 
@@ -63,6 +69,8 @@ public class MemorySourceScanner {
       ScanCounters counters = new ScanCounters(totalFiles);
 
       progressListener.accept(counters.toProgress());
+
+      ensureAvailable(rootPath);
 
       /*
        * The indexed entries for this source are replaced.
@@ -88,14 +96,11 @@ public class MemorySourceScanner {
     }
   }
 
-  private void validateSourcePath(Path rootPath) {
-    if (!Files.exists(rootPath)) {
-      throw new IllegalStateException(
-          "The configured source folder is currently unavailable: " + rootPath);
-    }
+  private void ensureAvailable(Path rootPath) {
+    SourceAvailability availability = sourceAvailabilityService.check(rootPath);
 
-    if (!Files.isDirectory(rootPath)) {
-      throw new IllegalStateException("The configured source path is not a directory: " + rootPath);
+    if (!availability.isAvailable()) {
+      throw new SourceUnavailableDuringScanException();
     }
   }
 
@@ -103,8 +108,7 @@ public class MemorySourceScanner {
     try (var paths = Files.walk(rootPath)) {
       return paths.filter(Files::isRegularFile).count();
     } catch (IOException exception) {
-      throw new IllegalStateException(
-          "Could not count files in the configured source folder.", exception);
+      throw new SourceUnavailableDuringScanException();
     }
   }
 
@@ -120,7 +124,7 @@ public class MemorySourceScanner {
           .filter(Files::isRegularFile)
           .forEach(path -> processFile(source, path, batch, counters, progressListener));
     } catch (IOException exception) {
-      throw new IllegalStateException("Could not scan the configured source folder.", exception);
+      throw new SourceUnavailableDuringScanException();
     }
 
     saveBatchIfNeeded(batch);
