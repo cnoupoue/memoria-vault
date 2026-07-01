@@ -213,19 +213,32 @@ function App() {
                 {memories.map((memory) => (
                     <article className="memory-card" key={memory.id}>
                       <div className="memory-preview">
-                        {memory.thumbnailUrl ? (
-                            <img
-                                alt={`Snapchat Memory from ${memory.capturedAt}`}
-                                className="memory-thumbnail"
-                                loading="lazy"
-                                src={memory.thumbnailUrl}
-                            />
-                        ) : (
-                            <div className="memory-video-placeholder">
-                              <span className="media-icon">▶</span>
-                              <span>Video preview coming soon</span>
-                            </div>
-                        )}
+                        <img
+                            alt={`Snapchat Memory from ${memory.capturedAt}`}
+                            className="memory-thumbnail"
+                            loading="lazy"
+                            onError={(event) => {
+                              event.currentTarget.style.display = "none";
+
+                              const fallback = event.currentTarget.nextElementSibling;
+
+                              if (fallback instanceof HTMLElement) {
+                                fallback.hidden = false;
+                              }
+                            }}
+                            src={memory.thumbnailUrl ?? ""}
+                        />
+
+                        <div className="memory-video-placeholder" hidden>
+    <span className="media-icon">
+      {memory.mediaType === "VIDEO" ? "▶" : "▣"}
+    </span>
+                          <span>
+      {memory.mediaType === "VIDEO"
+          ? "Video preview unavailable"
+          : "Image preview unavailable"}
+    </span>
+                        </div>
 
                         {memory.hasOverlay && (
                             <span className="overlay-badge">Overlay</span>
