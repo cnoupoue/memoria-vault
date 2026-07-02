@@ -19,7 +19,7 @@ snapmemoria/
 └── README.md
 ```
 
-The backend indexes exported Snapchat media files into SQLite.
+The backend indexes exported Snapchat media files into SQLite. It stores metadata and local file paths only; original media remains in place on local storage or an external drive.
 
 The frontend provides:
 
@@ -63,6 +63,8 @@ During development, Vite proxies `/api` requests to Spring Boot.
 ## Local storage model
 
 Original Snapchat Memories are never copied into the repository.
+
+The source folder picker is a local desktop convenience. It returns only the folder path selected by the user through the native picker; it must not upload, copy, move, or duplicate personal media. Manual path entry remains available for advanced users and for headless environments where native folder selection is unavailable.
 
 SnapMemoria stores local application data under:
 
@@ -220,6 +222,7 @@ Manages configured parent folders containing Snapchat exports.
 Important responsibilities:
 
 * Add source folders
+* Open a local native folder picker for source selection when desktop APIs are available
 * List configured sources
 * Remove sources
 * Track scan status
@@ -278,6 +281,8 @@ GET /api/memories/{id}/overlay
 The backend retrieves file paths from SQLite and validates that they remain inside the configured source directory.
 
 Never add an endpoint that accepts an arbitrary filesystem path from the client.
+
+The folder picker endpoint is the exception for source setup: it accepts no path input, opens a local native folder chooser on the machine running SnapMemoria, and returns only the user-selected folder. In headless or unsupported environments, it returns a structured `FOLDER_PICKER_UNAVAILABLE` error and the frontend keeps manual path entry available.
 
 ### `thumbnail`
 

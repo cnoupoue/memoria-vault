@@ -14,6 +14,7 @@ vi.mock('./api/snapmemoriaApi', () => ({
   getMemoryScanJob: vi.fn(),
   getMemorySourceAvailability: vi.fn(),
   getMemorySources: vi.fn(),
+  selectMemorySourceFolder: vi.fn(),
   getTimelineMonths: vi.fn(),
   getTimelineYears: vi.fn(),
   getTodayFlashbacks: vi.fn(),
@@ -24,15 +25,43 @@ vi.mock('./api/snapmemoriaApi', () => ({
 import {
   createMemorySource,
   getMemorySources,
+  selectMemorySourceFolder,
+  startMemorySourceScan,
   getTimelineYears,
 } from './api/snapmemoriaApi';
 
 const createMemorySourceMock = vi.mocked(createMemorySource);
 const getMemorySourcesMock = vi.mocked(getMemorySources);
+const selectMemorySourceFolderMock = vi.mocked(selectMemorySourceFolder);
+const startMemorySourceScanMock = vi.mocked(startMemorySourceScan);
 const getTimelineYearsMock = vi.mocked(getTimelineYears);
 
 beforeEach(() => {
   getTimelineYearsMock.mockResolvedValue([]);
+  selectMemorySourceFolderMock.mockResolvedValue({
+    selected: false,
+    path: null,
+    name: null,
+  });
+  startMemorySourceScanMock.mockResolvedValue({
+    id: 'scan-1',
+    sourceId: 'source-1',
+    status: 'RUNNING',
+    totalFiles: 0,
+    filesProcessed: 0,
+    mainImages: 0,
+    mainVideos: 0,
+    overlays: 0,
+    indexedMemories: 0,
+    attachedOverlays: 0,
+    unmatchedOverlays: 0,
+    unsupportedFiles: 0,
+    unreadableFiles: 0,
+    errorMessage: null,
+    startedAt: '2026-01-01T00:00:00Z',
+    completedAt: null,
+    updatedAt: '2026-01-01T00:00:00Z',
+  });
 });
 
 afterEach(() => {
@@ -102,10 +131,15 @@ describe('App onboarding', () => {
     expect(screen.getByText(/memories 3\//)).toBeInTheDocument();
   });
 
-  it('opens the source creation flow from the primary action', async () => {
+  it('opens the folder selection flow from the primary action', async () => {
     const user = userEvent.setup();
 
     getMemorySourcesMock.mockResolvedValue([]);
+    selectMemorySourceFolderMock.mockResolvedValue({
+      selected: true,
+      path: '/Volumes/SNAPCHAT/snapchat-memories',
+      name: 'snapchat-memories',
+    });
 
     render(<App />);
 
@@ -116,7 +150,15 @@ describe('App onboarding', () => {
     expect(
       screen.getByRole('heading', { name: 'Settings' }),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText('Source name')).toHaveFocus();
+    await waitFor(() => {
+      expect(selectMemorySourceFolderMock).toHaveBeenCalled();
+    });
+    expect(screen.getByLabelText('Source name')).toHaveValue(
+      'snapchat-memories',
+    );
+    expect(
+      screen.getByLabelText('Or enter the folder path manually'),
+    ).toHaveValue('/Volumes/SNAPCHAT/snapchat-memories');
   });
 
   it('hides onboarding after a source is added', async () => {
@@ -133,7 +175,7 @@ describe('App onboarding', () => {
     );
     await user.type(screen.getByLabelText('Source name'), 'Snapchat USB');
     await user.type(
-      screen.getByLabelText('Export folder path'),
+      screen.getByLabelText('Or enter the folder path manually'),
       '/Volumes/SNAP/snapchat-memories',
     );
     await user.click(screen.getByRole('button', { name: 'Add source' }));
@@ -143,10 +185,8 @@ describe('App onboarding', () => {
         screen.queryByText('Welcome to SnapMemoria'),
       ).not.toBeInTheDocument();
     });
-    expect(screen.getByText('Your source was added.')).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Scan source' }),
-    ).toBeInTheDocument();
+    expect(startMemorySourceScanMock).toHaveBeenCalledWith(source.id);
+    expect(screen.getByText('Scanning Memories…')).toBeInTheDocument();
   });
 
   it('renders source loading errors safely', async () => {
@@ -164,5 +204,28 @@ describe('App onboarding', () => {
     expect(
       screen.queryByText('/Users/private/path failed'),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('App footer', () => {
+  it('shows project links and ownership information', async () => {
+    getMemorySourcesMock.mockResolvedValue([]);
+
+    render(<App />);
+
+    expect(
+      await screen.findByText('All rights reserved Cameron Noupoue.'),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.getByRole('link', {
+        name: 'Open source on GitHub, contributions welcome',
+      }),
+    ).toHaveAttribute('href', 'https://github.com/cnoupoue/snapmemoria');
+
+    expect(screen.getByRole('link', { name: 'LinkedIn' })).toHaveAttribute(
+      'href',
+      'https://www.linkedin.com/in/cnoupoue',
+    );
   });
 });

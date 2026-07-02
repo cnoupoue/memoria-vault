@@ -1,5 +1,7 @@
 package be.cnoupoue.snapmemoria.source;
 
+import be.cnoupoue.snapmemoria.indexing.MemoryIndexPersistence;
+import be.cnoupoue.snapmemoria.indexing.MemoryScanJobRepository;
 import be.cnoupoue.snapmemoria.source.api.CreateMemorySourceRequest;
 import be.cnoupoue.snapmemoria.source.api.MemorySourceResponse;
 import be.cnoupoue.snapmemoria.source.api.SourceAvailabilityResponse;
@@ -16,12 +18,18 @@ public class MemorySourceService {
 
   private final MemorySourceRepository memorySourceRepository;
   private final SourceAvailabilityService sourceAvailabilityService;
+  private final MemoryIndexPersistence memoryIndexPersistence;
+  private final MemoryScanJobRepository memoryScanJobRepository;
 
   public MemorySourceService(
       MemorySourceRepository memorySourceRepository,
-      SourceAvailabilityService sourceAvailabilityService) {
+      SourceAvailabilityService sourceAvailabilityService,
+      MemoryIndexPersistence memoryIndexPersistence,
+      MemoryScanJobRepository memoryScanJobRepository) {
     this.memorySourceRepository = memorySourceRepository;
     this.sourceAvailabilityService = sourceAvailabilityService;
+    this.memoryIndexPersistence = memoryIndexPersistence;
+    this.memoryScanJobRepository = memoryScanJobRepository;
   }
 
   public MemorySourceResponse create(CreateMemorySourceRequest request) {
@@ -89,6 +97,10 @@ public class MemorySourceService {
 
   public void delete(String sourceId) {
     findById(sourceId);
+    memoryScanJobRepository.deleteOrphaned();
+    memoryIndexPersistence.deleteOrphaned();
+    memoryScanJobRepository.deleteBySourceId(sourceId);
+    memoryIndexPersistence.deleteBySourceId(sourceId);
     memorySourceRepository.deleteById(sourceId);
   }
 }

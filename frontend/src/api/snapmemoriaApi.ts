@@ -1,6 +1,7 @@
 import type {
   CreateMemorySourceRequest,
   FlashbackResponse,
+  FolderSelection,
   MemoryDetail,
   MemoryPage,
   MemorySource,
@@ -18,6 +19,8 @@ type ApiErrorResponse = {
 };
 
 const ERROR_MESSAGES: Record<string, string> = {
+  FOLDER_PICKER_UNAVAILABLE:
+    'Folder selection is unavailable in this environment. Enter the folder path manually.',
   SOURCE_UNAVAILABLE:
     'The configured source folder is currently unavailable. Connect the drive containing this source, then refresh its status.',
 };
@@ -102,6 +105,12 @@ export function getFlashbacksByDate(date: string): Promise<FlashbackResponse> {
 
 export function getMemorySources(): Promise<MemorySource[]> {
   return request<MemorySource[]>('/api/sources');
+}
+
+export function selectMemorySourceFolder(): Promise<FolderSelection> {
+  return request<FolderSelection>('/api/sources/select-folder', {
+    method: 'POST',
+  });
 }
 
 export function getMemorySourceAvailability(

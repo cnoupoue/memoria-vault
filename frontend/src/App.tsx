@@ -78,6 +78,7 @@ function App() {
 
   const [archiveRefreshVersion, setArchiveRefreshVersion] = useState(0);
   const [shouldFocusSourceForm, setShouldFocusSourceForm] = useState(false);
+  const [shouldOpenFolderPicker, setShouldOpenFolderPicker] = useState(false);
 
   /*
    * Prevents an older response from replacing newer results
@@ -314,17 +315,27 @@ function App() {
   function openSourceCreationFlow() {
     setActiveView('settings');
     setShouldFocusSourceForm(true);
+    setShouldOpenFolderPicker(true);
   }
 
   function handleSourceCreated(source: MemorySource) {
     setSources((currentSources) => {
       if (currentSources.some((item) => item.id === source.id)) {
-        return currentSources;
+        return currentSources.map((item) =>
+          item.id === source.id ? source : item,
+        );
       }
 
       return [...currentSources, source];
     });
     setShouldFocusSourceForm(false);
+    setShouldOpenFolderPicker(false);
+  }
+
+  function handleSourceDeleted(sourceId: string) {
+    setSources((currentSources) =>
+      currentSources.filter((source) => source.id !== sourceId),
+    );
   }
 
   const pageTitle =
@@ -355,6 +366,7 @@ function App() {
               onClick={() => {
                 setActiveView('archive');
                 setShouldFocusSourceForm(false);
+                setShouldOpenFolderPicker(false);
               }}
               type="button"
             >
@@ -368,6 +380,7 @@ function App() {
               onClick={() => {
                 setActiveView('flashbacks');
                 setShouldFocusSourceForm(false);
+                setShouldOpenFolderPicker(false);
               }}
               type="button"
             >
@@ -380,6 +393,7 @@ function App() {
               onClick={() => {
                 setActiveView('settings');
                 setShouldFocusSourceForm(false);
+                setShouldOpenFolderPicker(false);
               }}
               type="button"
             >
@@ -463,151 +477,178 @@ function App() {
         )}
       </aside>
 
-      {activeView === 'archive' ? (
-        isLoadingSources ? (
-          <section className="content">
-            <div className="state-message">Checking setup…</div>
-          </section>
-        ) : sourceLoadError ? (
-          <section className="content">
-            <header className="content-header">
-              <div>
-                <p className="eyebrow">Setup</p>
-                <h2>SnapMemoria setup</h2>
-              </div>
-            </header>
-            <div className="error-banner">{sourceLoadError}</div>
-          </section>
-        ) : !hasConfiguredSources ? (
-          <OnboardingPage onAddSource={openSourceCreationFlow} />
-        ) : (
-          <section className="content">
-            <header className="content-header">
-              <div>
-                <p className="eyebrow">Memory archive</p>
-                <h2>{pageTitle}</h2>
-              </div>
-
-              <p className="memory-count">
-                {totalMemories} Memories · {memories.length} loaded
-              </p>
-            </header>
-
-            {error && <div className="error-banner">{error}</div>}
-
-            {isLoadingMemories && (
-              <div className="state-message">Loading Memories…</div>
-            )}
-
-            {!isLoadingMemories && memories.length === 0 && !error && (
-              <div className="state-message archive-empty-state">
-                <strong>Your source is ready.</strong>
-                <span>Scan it to build your private local archive.</span>
-                <button
-                  className="primary-button"
-                  onClick={openSourceCreationFlow}
-                  type="button"
-                >
-                  Start scanning
-                </button>
-              </div>
-            )}
-
-            {!isLoadingMemories && memories.length > 0 && (
-              <>
-                <div className="memory-grid">
-                  {memories.map((memory) => (
-                    <button
-                      aria-label={`Open Memory from ${memory.capturedAt}`}
-                      className="memory-card"
-                      key={memory.id}
-                      onClick={() => void openMemory(memory.id)}
-                      type="button"
-                    >
-                      <div className="memory-preview">
-                        <img
-                          alt={`Snapchat Memory from ${memory.capturedAt}`}
-                          className="memory-thumbnail"
-                          loading="lazy"
-                          onError={(event) => {
-                            event.currentTarget.style.display = 'none';
-
-                            const fallback =
-                              event.currentTarget.nextElementSibling;
-
-                            if (fallback instanceof HTMLElement) {
-                              fallback.hidden = false;
-                            }
-                          }}
-                          src={memory.thumbnailUrl ?? ''}
-                        />
-
-                        <div className="memory-video-placeholder" hidden>
-                          <span className="media-icon">
-                            {memory.mediaType === 'VIDEO' ? '▶' : '▣'}
-                          </span>
-
-                          <span>
-                            {memory.mediaType === 'VIDEO'
-                              ? 'Video preview unavailable'
-                              : 'Image preview unavailable'}
-                          </span>
-                        </div>
-
-                        {memory.hasOverlay && (
-                          <span className="overlay-badge">Overlay</span>
-                        )}
-
-                        {memory.mediaType === 'VIDEO' && (
-                          <span className="video-badge">Video</span>
-                        )}
-                      </div>
-
-                      <div className="memory-card-content">
-                        <strong>{memory.capturedAt}</strong>
-
-                        <span>
-                          {memory.mediaType.toLowerCase()} ·{' '}
-                          {formatFileSize(memory.fileSizeBytes)}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
+      <div className="app-content">
+        {activeView === 'archive' ? (
+          isLoadingSources ? (
+            <section className="content">
+              <div className="state-message">Checking setup…</div>
+            </section>
+          ) : sourceLoadError ? (
+            <section className="content">
+              <header className="content-header">
+                <div>
+                  <p className="eyebrow">Setup</p>
+                  <h2>SnapMemoria setup</h2>
+                </div>
+              </header>
+              <div className="error-banner">{sourceLoadError}</div>
+            </section>
+          ) : !hasConfiguredSources ? (
+            <OnboardingPage onAddSource={openSourceCreationFlow} />
+          ) : (
+            <section className="content">
+              <header className="content-header">
+                <div>
+                  <p className="eyebrow">Memory archive</p>
+                  <h2>{pageTitle}</h2>
                 </div>
 
-                {hasMoreMemories && (
-                  <div className="load-more-container">
-                    <button
-                      className="load-more-button"
-                      disabled={isLoadingMore}
-                      onClick={() => void loadMoreMemories()}
-                      type="button"
-                    >
-                      {isLoadingMore ? 'Loading more Memories…' : 'Load more'}
-                    </button>
-                  </div>
-                )}
+                <p className="memory-count">
+                  {totalMemories} Memories · {memories.length} loaded
+                </p>
+              </header>
 
-                {!hasMoreMemories && memories.length > 0 && (
-                  <p className="end-of-list">
-                    You have reached the end of this period.
-                  </p>
-                )}
-              </>
-            )}
-          </section>
-        )
-      ) : activeView === 'flashbacks' ? (
-        <FlashbacksPage
-          onOpenMemory={(memoryId) => void openMemory(memoryId)}
-        />
-      ) : (
-        <SettingsPage
-          autoFocusSourceForm={shouldFocusSourceForm}
-          onSourceCreated={handleSourceCreated}
-          onSourceScanned={refreshArchiveData}
-        />
-      )}
+              {error && <div className="error-banner">{error}</div>}
+
+              {isLoadingMemories && (
+                <div className="state-message">Loading Memories…</div>
+              )}
+
+              {!isLoadingMemories && memories.length === 0 && !error && (
+                <div className="state-message archive-empty-state">
+                  <strong>Your source is ready.</strong>
+                  <span>Scan it to build your private local archive.</span>
+                  <button
+                    className="primary-button"
+                    onClick={openSourceCreationFlow}
+                    type="button"
+                  >
+                    Start scanning
+                  </button>
+                </div>
+              )}
+
+              {!isLoadingMemories && memories.length > 0 && (
+                <>
+                  <div className="memory-grid">
+                    {memories.map((memory) => (
+                      <button
+                        aria-label={`Open Memory from ${memory.capturedAt}`}
+                        className="memory-card"
+                        key={memory.id}
+                        onClick={() => void openMemory(memory.id)}
+                        type="button"
+                      >
+                        <div className="memory-preview">
+                          <img
+                            alt={`Snapchat Memory from ${memory.capturedAt}`}
+                            className="memory-thumbnail"
+                            loading="lazy"
+                            onError={(event) => {
+                              event.currentTarget.style.display = 'none';
+
+                              const fallback =
+                                event.currentTarget.nextElementSibling;
+
+                              if (fallback instanceof HTMLElement) {
+                                fallback.hidden = false;
+                              }
+                            }}
+                            src={memory.thumbnailUrl ?? ''}
+                          />
+
+                          <div className="memory-video-placeholder" hidden>
+                            <span className="media-icon">
+                              {memory.mediaType === 'VIDEO' ? '▶' : '▣'}
+                            </span>
+
+                            <span>
+                              {memory.mediaType === 'VIDEO'
+                                ? 'Video preview unavailable'
+                                : 'Image preview unavailable'}
+                            </span>
+                          </div>
+
+                          {memory.hasOverlay && (
+                            <span className="overlay-badge">Overlay</span>
+                          )}
+
+                          {memory.mediaType === 'VIDEO' && (
+                            <span className="video-badge">Video</span>
+                          )}
+                        </div>
+
+                        <div className="memory-card-content">
+                          <strong>{memory.capturedAt}</strong>
+
+                          <span>
+                            {memory.mediaType.toLowerCase()} ·{' '}
+                            {formatFileSize(memory.fileSizeBytes)}
+                          </span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  {hasMoreMemories && (
+                    <div className="load-more-container">
+                      <button
+                        className="load-more-button"
+                        disabled={isLoadingMore}
+                        onClick={() => void loadMoreMemories()}
+                        type="button"
+                      >
+                        {isLoadingMore ? 'Loading more Memories…' : 'Load more'}
+                      </button>
+                    </div>
+                  )}
+
+                  {!hasMoreMemories && memories.length > 0 && (
+                    <p className="end-of-list">
+                      You have reached the end of this period.
+                    </p>
+                  )}
+                </>
+              )}
+            </section>
+          )
+        ) : activeView === 'flashbacks' ? (
+          <FlashbacksPage
+            onOpenMemory={(memoryId) => void openMemory(memoryId)}
+          />
+        ) : (
+          <SettingsPage
+            autoOpenFolderPicker={shouldOpenFolderPicker}
+            autoFocusSourceForm={shouldFocusSourceForm}
+            onFolderPickerAutoOpened={() => setShouldOpenFolderPicker(false)}
+            onSourceCreated={handleSourceCreated}
+            onSourceDeleted={handleSourceDeleted}
+            onSourceScanned={refreshArchiveData}
+          />
+        )}
+
+        <footer className="site-footer">
+          <p>All rights reserved Cameron Noupoue.</p>
+
+          <nav aria-label="Project links" className="site-footer-links">
+            <a
+              href="https://github.com/cnoupoue/snapmemoria"
+              rel="noreferrer"
+              target="_blank"
+            >
+              Open source on GitHub, contributions welcome
+            </a>
+
+            <a
+              href="https://www.linkedin.com/in/cnoupoue"
+              rel="noreferrer"
+              target="_blank"
+            >
+              LinkedIn
+            </a>
+          </nav>
+        </footer>
+      </div>
 
       <MemoryViewer
         error={selectedMemoryError}

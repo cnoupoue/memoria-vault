@@ -2,6 +2,7 @@ package be.cnoupoue.snapmemoria.source.api;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -148,6 +149,35 @@ class MemorySourceAvailabilityApiTests {
         .isEqualTo(1);
   }
 
+  @Test
+  void deletesSourceWithIndexedMemoriesAndScanJobs() throws Exception {
+    MemorySource source = saveSource("source-delete", temporaryDirectory);
+    saveMemory("memory-delete", source.getId());
+    saveMemory("memory-orphaned", "source-already-deleted");
+    memoryScanJobRepository.save(
+        new be.cnoupoue.snapmemoria.indexing.MemoryScanJob(
+            "scan-delete", source.getId(), Instant.now().toString()));
+    memoryScanJobRepository.save(
+        new be.cnoupoue.snapmemoria.indexing.MemoryScanJob(
+            "scan-orphaned", "source-already-deleted", Instant.now().toString()));
+
+    mockMvc.perform(delete("/api/sources/{id}", source.getId())).andExpect(status().isNoContent());
+
+    org.assertj.core.api.Assertions.assertThat(memorySourceRepository.existsById(source.getId()))
+        .isFalse();
+    org.assertj.core.api.Assertions.assertThat(snapMemoryRepository.countBySourceId(source.getId()))
+        .isZero();
+    org.assertj.core.api.Assertions.assertThat(
+            snapMemoryRepository.countBySourceId("source-already-deleted"))
+        .isZero();
+    org.assertj.core.api.Assertions.assertThat(
+            memoryScanJobRepository.countBySourceId(source.getId()))
+        .isZero();
+    org.assertj.core.api.Assertions.assertThat(
+            memoryScanJobRepository.countBySourceId("source-already-deleted"))
+        .isZero();
+  }
+
   private MemorySource saveSource(String id, Path rootPath) {
     String now = Instant.now().toString();
 
@@ -163,13 +193,17 @@ class MemorySourceAvailabilityApiTests {
   }
 
   private void saveMemory(String sourceId) {
+    saveMemory("memory-1", sourceId);
+  }
+
+  private void saveMemory(String id, String sourceId) {
     String now = Instant.now().toString();
 
     snapMemoryRepository.save(
         new SnapMemory(
-            "memory-1",
+            id,
             sourceId,
-            "external-memory-1",
+            id + "-external",
             "2020-06-10",
             SnapMemoryType.IMAGE,
             temporaryDirectory.resolve("existing.jpg").toString(),

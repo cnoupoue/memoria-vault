@@ -25,6 +25,20 @@ public class MemoryIndexPersistence {
   }
 
   @Transactional
+  public void deleteOrphaned() {
+    entityManager
+        .createQuery(
+            """
+                DELETE FROM SnapMemory memory
+                WHERE memory.sourceId NOT IN (
+                    SELECT source.id
+                    FROM MemorySource source
+                )
+                """)
+        .executeUpdate();
+  }
+
+  @Transactional
   public void saveBatch(List<SnapMemory> memories) {
     for (SnapMemory memory : memories) {
       entityManager.persist(memory);

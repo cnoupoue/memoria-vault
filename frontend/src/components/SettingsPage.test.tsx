@@ -11,22 +11,47 @@ vi.mock('../api/snapmemoriaApi', () => ({
   getMemoryScanJob: vi.fn(),
   getMemorySourceAvailability: vi.fn(),
   getMemorySources: vi.fn(),
+  selectMemorySourceFolder: vi.fn(),
   startMemorySourceScan: vi.fn(),
-  SnapmemoriaApiError: class SnapmemoriaApiError extends Error {},
+  SnapmemoriaApiError: class SnapmemoriaApiError extends Error {
+    readonly status: number;
+    readonly code: string;
+    readonly timestamp: string | null;
+
+    constructor(error: {
+      status: number;
+      code: string;
+      message: string;
+      timestamp: string | null;
+    }) {
+      super(error.message);
+      this.status = error.status;
+      this.code = error.code;
+      this.timestamp = error.timestamp;
+    }
+  },
 }));
 
 import {
+  createMemorySource,
+  deleteMemorySource,
   getMemorySourceAvailability,
   getMemorySources,
+  selectMemorySourceFolder,
+  SnapmemoriaApiError,
   startMemorySourceScan,
 } from '../api/snapmemoriaApi';
 
+const createMemorySourceMock = vi.mocked(createMemorySource);
+const deleteMemorySourceMock = vi.mocked(deleteMemorySource);
 const getMemorySourcesMock = vi.mocked(getMemorySources);
 const getMemorySourceAvailabilityMock = vi.mocked(getMemorySourceAvailability);
+const selectMemorySourceFolderMock = vi.mocked(selectMemorySourceFolder);
 const startMemorySourceScanMock = vi.mocked(startMemorySourceScan);
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.clearAllMocks();
 });
 
@@ -46,6 +71,127 @@ function buildSource(source: Partial<MemorySource>): MemorySource {
 }
 
 describe('SettingsPage', () => {
+  it('shows the folder picker action in source creation', async () => {
+    getMemorySourcesMock.mockResolvedValue([]);
+
+    render(<SettingsPage onSourceScanned={vi.fn()} />);
+
+    expect(
+      await screen.findByRole('button', {
+        name: 'Choose Snapchat export folder',
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('populates path and source name from a selected folder', async () => {
+    const user = userEvent.setup();
+
+    getMemorySourcesMock.mockResolvedValue([]);
+    selectMemorySourceFolderMock.mockResolvedValue({
+      selected: true,
+      path: '/Volumes/SNAPCHAT/snapchat-memories',
+      name: 'snapchat-memories',
+    });
+
+    render(<SettingsPage onSourceScanned={vi.fn()} />);
+
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Choose Snapchat export folder',
+      }),
+    );
+
+    expect(screen.getByLabelText('Source name')).toHaveValue(
+      'snapchat-memories',
+    );
+    expect(
+      screen.getByLabelText('Or enter the folder path manually'),
+    ).toHaveValue('/Volumes/SNAPCHAT/snapchat-memories');
+  });
+
+  it('preserves an existing manually typed source name', async () => {
+    const user = userEvent.setup();
+
+    getMemorySourcesMock.mockResolvedValue([]);
+    selectMemorySourceFolderMock.mockResolvedValue({
+      selected: true,
+      path: '/Volumes/SNAPCHAT/snapchat-memories',
+      name: 'snapchat-memories',
+    });
+
+    render(<SettingsPage onSourceScanned={vi.fn()} />);
+
+    await user.type(await screen.findByLabelText('Source name'), 'My USB');
+    await user.click(
+      screen.getByRole('button', { name: 'Choose Snapchat export folder' }),
+    );
+
+    expect(screen.getByLabelText('Source name')).toHaveValue('My USB');
+    expect(
+      screen.getByLabelText('Or enter the folder path manually'),
+    ).toHaveValue('/Volumes/SNAPCHAT/snapchat-memories');
+  });
+
+  it('keeps form values unchanged when folder selection is cancelled', async () => {
+    const user = userEvent.setup();
+
+    getMemorySourcesMock.mockResolvedValue([]);
+    selectMemorySourceFolderMock.mockResolvedValue({
+      selected: false,
+      path: null,
+      name: null,
+    });
+
+    render(<SettingsPage onSourceScanned={vi.fn()} />);
+
+    await user.type(await screen.findByLabelText('Source name'), 'Manual name');
+    await user.type(
+      screen.getByLabelText('Or enter the folder path manually'),
+      '/Volumes/manual/snapchat-memories',
+    );
+    await user.click(
+      screen.getByRole('button', { name: 'Choose Snapchat export folder' }),
+    );
+
+    expect(screen.getByLabelText('Source name')).toHaveValue('Manual name');
+    expect(
+      screen.getByLabelText('Or enter the folder path manually'),
+    ).toHaveValue('/Volumes/manual/snapchat-memories');
+    expect(screen.queryByText(/unavailable/i)).not.toBeInTheDocument();
+  });
+
+  it('shows manual path fallback when folder picker is unavailable', async () => {
+    const user = userEvent.setup();
+
+    getMemorySourcesMock.mockResolvedValue([]);
+    selectMemorySourceFolderMock.mockRejectedValue(
+      new SnapmemoriaApiError({
+        status: 409,
+        code: 'FOLDER_PICKER_UNAVAILABLE',
+        message:
+          'Folder selection is unavailable in this environment. Enter the folder path manually.',
+        timestamp: '2026-01-01T00:00:00Z',
+      }),
+    );
+
+    render(<SettingsPage onSourceScanned={vi.fn()} />);
+
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Choose Snapchat export folder',
+      }),
+    );
+
+    expect(
+      screen.getByText(
+        'Folder selection is unavailable in this environment. Enter the folder path manually.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByLabelText('Or enter the folder path manually'),
+    ).toBeEnabled();
+  });
+
   it('renders available source status', async () => {
     getMemorySourcesMock.mockResolvedValue([buildSource({})]);
 
@@ -117,5 +263,74 @@ describe('SettingsPage', () => {
       expect(screen.getByText('Available')).toBeInTheDocument();
     });
     expect(getMemorySourceAvailabilityMock).toHaveBeenCalledWith('source-1');
+  });
+
+  it('starts scanning automatically after adding a source', async () => {
+    const user = userEvent.setup();
+    const source = buildSource({});
+
+    getMemorySourcesMock.mockResolvedValue([]);
+    createMemorySourceMock.mockResolvedValue(source);
+    startMemorySourceScanMock.mockResolvedValue({
+      id: 'scan-1',
+      sourceId: source.id,
+      status: 'RUNNING',
+      totalFiles: 0,
+      filesProcessed: 0,
+      mainImages: 0,
+      mainVideos: 0,
+      overlays: 0,
+      indexedMemories: 0,
+      attachedOverlays: 0,
+      unmatchedOverlays: 0,
+      unsupportedFiles: 0,
+      unreadableFiles: 0,
+      errorMessage: null,
+      startedAt: '2026-01-01T00:00:00Z',
+      completedAt: null,
+      updatedAt: '2026-01-01T00:00:00Z',
+    });
+
+    render(<SettingsPage onSourceScanned={vi.fn()} />);
+
+    await user.type(await screen.findByLabelText('Source name'), source.name);
+    await user.type(
+      screen.getByLabelText('Or enter the folder path manually'),
+      source.rootPath,
+    );
+    await user.click(screen.getByRole('button', { name: 'Add source' }));
+
+    await waitFor(() => {
+      expect(startMemorySourceScanMock).toHaveBeenCalledWith(source.id);
+    });
+    expect(screen.getByText('Scanning Memories…')).toBeInTheDocument();
+  });
+
+  it('removes a deleted source from the UI and notifies the parent', async () => {
+    const user = userEvent.setup();
+    const onSourceDeleted = vi.fn();
+    const onSourceScanned = vi.fn();
+
+    getMemorySourcesMock.mockResolvedValue([buildSource({})]);
+    deleteMemorySourceMock.mockResolvedValue(undefined);
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(
+      <SettingsPage
+        onSourceDeleted={onSourceDeleted}
+        onSourceScanned={onSourceScanned}
+      />,
+    );
+
+    expect(await screen.findByText('Snapchat USB')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Remove' }));
+
+    await waitFor(() => {
+      expect(screen.queryByText('Snapchat USB')).not.toBeInTheDocument();
+    });
+    expect(deleteMemorySourceMock).toHaveBeenCalledWith('source-1');
+    expect(onSourceDeleted).toHaveBeenCalledWith('source-1');
+    expect(onSourceScanned).toHaveBeenCalled();
   });
 });

@@ -12,6 +12,7 @@ import {
   getMemoryScanJob,
   getMemorySourceAvailability,
   getMemorySources,
+  selectMemorySourceFolder,
   SnapmemoriaApiError,
   startMemorySourceScan,
 } from '../api/snapmemoriaApi';
@@ -78,14 +79,20 @@ function getSourceStateLabel(
 }
 
 type SettingsPageProps = {
+  autoOpenFolderPicker?: boolean;
   autoFocusSourceForm?: boolean;
+  onFolderPickerAutoOpened?: () => void;
   onSourceCreated?: (source: MemorySource) => void;
+  onSourceDeleted?: (sourceId: string) => void;
   onSourceScanned: () => void;
 };
 
 export function SettingsPage({
+  autoOpenFolderPicker = false,
   autoFocusSourceForm = false,
+  onFolderPickerAutoOpened,
   onSourceCreated,
+  onSourceDeleted,
   onSourceScanned,
 }: SettingsPageProps) {
   const [sources, setSources] = useState<MemorySource[]>([]);
@@ -94,17 +101,61 @@ export function SettingsPage({
 
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
+  const [isSelectingFolder, setIsSelectingFolder] = useState(false);
   const [scanningSourceId, setScanningSourceId] = useState<string | null>(null);
   const [deletingSourceId, setDeletingSourceId] = useState<string | null>(null);
   const [refreshingAvailabilitySourceId, setRefreshingAvailabilitySourceId] =
     useState<string | null>(null);
 
   const [error, setError] = useState<string | null>(null);
+  const [folderPickerMessage, setFolderPickerMessage] = useState<string | null>(
+    null,
+  );
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [scanJob, setScanJob] = useState<MemoryScanJob | null>(null);
 
   const pollingIntervalRef = useRef<number | null>(null);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
+
+  function upsertSource(source: MemorySource) {
+    setSources((currentSources) => {
+      const sourceExists = currentSources.some((item) => item.id === source.id);
+
+      if (!sourceExists) {
+        return [...currentSources, source];
+      }
+
+      return currentSources.map((item) =>
+        item.id === source.id ? source : item,
+      );
+    });
+  }
+
+  const handleChooseFolder = useCallback(async () => {
+    setIsSelectingFolder(true);
+    setError(null);
+    setFolderPickerMessage(null);
+    setSuccessMessage(null);
+
+    try {
+      const selection = await selectMemorySourceFolder();
+
+      if (!selection.selected || selection.path === null) {
+        return;
+      }
+
+      setRootPath(selection.path);
+      setName((currentName) => currentName || selection.name || '');
+    } catch (selectionError) {
+      setFolderPickerMessage(
+        selectionError instanceof SnapmemoriaApiError
+          ? selectionError.message
+          : 'Folder selection is unavailable. Enter the folder path manually.',
+      );
+    } finally {
+      setIsSelectingFolder(false);
+    }
+  }, []);
 
   const loadSources = useCallback(async () => {
     try {
@@ -184,6 +235,21 @@ export function SettingsPage({
       nameInputRef.current?.focus();
     }
   }, [autoFocusSourceForm]);
+
+  useEffect(() => {
+    if (!autoOpenFolderPicker) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      onFolderPickerAutoOpened?.();
+      void handleChooseFolder();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [autoOpenFolderPicker, handleChooseFolder, onFolderPickerAutoOpened]);
 
   useEffect(() => {
     let isMounted = true;
@@ -275,6 +341,7 @@ export function SettingsPage({
 
     setIsCreating(true);
     setError(null);
+    setFolderPickerMessage(null);
     setSuccessMessage(null);
     setScanJob(null);
 
@@ -284,14 +351,25 @@ export function SettingsPage({
         rootPath: rootPath.trim(),
       });
 
-      setSources((currentSources) => [...currentSources, createdSource]);
-      setSuccessMessage(
-        'Your source was added. Start scanning to index your Memories locally.',
-      );
+      upsertSource(createdSource);
+      setSuccessMessage('Your source was added. Scanning Memories locally…');
       onSourceCreated?.(createdSource);
 
       setName('');
       setRootPath('');
+
+      try {
+        const startedJob = await startMemorySourceScan(createdSource.id);
+
+        setScanJob(startedJob);
+        startPolling(startedJob.id, createdSource.id);
+      } catch (scanError) {
+        setError(
+          scanError instanceof SnapmemoriaApiError
+            ? scanError.message
+            : 'The source was added, but the scan could not start automatically.',
+        );
+      }
     } catch {
       setError(
         'Could not add this source. It may already exist or the path may be invalid.',
@@ -355,6 +433,8 @@ export function SettingsPage({
       setSources((currentSources) =>
         currentSources.filter((item) => item.id !== source.id),
       );
+      onSourceDeleted?.(source.id);
+      onSourceScanned();
     } catch {
       setError('Could not remove this source.');
     } finally {
@@ -374,8 +454,8 @@ export function SettingsPage({
       {error && <div className="error-banner">{error}</div>}
       {successMessage && (
         <div className="scan-result-banner">
-          <strong>Your source was added.</strong>
-          <span>Start scanning to index your Memories locally.</span>
+          <strong>{successMessage}</strong>
+          <span>SnapMemoria indexes your Memories in place.</span>
         </div>
       )}
 
@@ -431,6 +511,29 @@ export function SettingsPage({
           </div>
         </div>
 
+        <div className="folder-picker-panel">
+          <button
+            className="primary-button"
+            disabled={isSelectingFolder || isCreating}
+            onClick={() => void handleChooseFolder()}
+            type="button"
+          >
+            {isSelectingFolder
+              ? 'Opening folder picker…'
+              : 'Choose Snapchat export folder'}
+          </button>
+          <p>
+            Choose the parent folder that contains your “memories”, “memories
+            2”, and similar export folders.
+          </p>
+        </div>
+
+        {folderPickerMessage && (
+          <div className="state-message manual-path-fallback">
+            {folderPickerMessage}
+          </div>
+        )}
+
         <form
           className="source-form"
           onSubmit={(event) => void handleCreateSource(event)}
@@ -446,7 +549,7 @@ export function SettingsPage({
           </label>
 
           <label>
-            Export folder path
+            Or enter the folder path manually
             <input
               onChange={(event) => setRootPath(event.target.value)}
               placeholder="/Volumes/MY_USB/snapchat-memories"

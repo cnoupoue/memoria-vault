@@ -2,10 +2,6 @@ package be.cnoupoue.snapmemoria.streaming;
 
 import be.cnoupoue.snapmemoria.memory.SnapMemory;
 import be.cnoupoue.snapmemoria.memory.SnapMemoryRepository;
-import be.cnoupoue.snapmemoria.source.MemorySource;
-import be.cnoupoue.snapmemoria.source.MemorySourceRepository;
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.HttpStatus;
@@ -16,12 +12,13 @@ import org.springframework.web.server.ResponseStatusException;
 public class MemoryMediaService {
 
   private final SnapMemoryRepository snapMemoryRepository;
-  private final MemorySourceRepository memorySourceRepository;
+  private final SecureMemoryPathResolver secureMemoryPathResolver;
 
   public MemoryMediaService(
-      SnapMemoryRepository snapMemoryRepository, MemorySourceRepository memorySourceRepository) {
+      SnapMemoryRepository snapMemoryRepository,
+      SecureMemoryPathResolver secureMemoryPathResolver) {
     this.snapMemoryRepository = snapMemoryRepository;
-    this.memorySourceRepository = memorySourceRepository;
+    this.secureMemoryPathResolver = secureMemoryPathResolver;
   }
 
   public FileSystemResource getMainMedia(String memoryId) {
@@ -51,30 +48,9 @@ public class MemoryMediaService {
 
   private FileSystemResource createSecureResource(
       String sourceId, String storedMediaPath, String unavailableMessage) {
-    MemorySource source =
-        memorySourceRepository
-            .findById(sourceId)
-            .orElseThrow(
-                () ->
-                    new ResponseStatusException(HttpStatus.NOT_FOUND, "Memory source not found."));
+    Path mediaPath =
+        secureMemoryPathResolver.resolve(sourceId, storedMediaPath, unavailableMessage);
 
-    try {
-      Path sourceRootPath = Path.of(source.getRootPath()).toRealPath();
-
-      Path mediaPath = Path.of(storedMediaPath).toRealPath();
-
-      if (!mediaPath.startsWith(sourceRootPath)) {
-        throw new ResponseStatusException(
-            HttpStatus.FORBIDDEN, "The requested file is outside the configured memory source.");
-      }
-
-      if (!Files.isRegularFile(mediaPath) || !Files.isReadable(mediaPath)) {
-        throw new ResponseStatusException(HttpStatus.NOT_FOUND, unavailableMessage);
-      }
-
-      return new FileSystemResource(mediaPath);
-    } catch (IOException exception) {
-      throw new ResponseStatusException(HttpStatus.NOT_FOUND, unavailableMessage);
-    }
+    return new FileSystemResource(mediaPath);
   }
 }

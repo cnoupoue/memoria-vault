@@ -7,6 +7,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 public class SnapmemoriaApplication {
 
   public static void main(String[] args) {
-    SpringApplication.run(SnapmemoriaApplication.class, args);
+    SpringApplication application = new SpringApplication(SnapmemoriaApplication.class);
+    application.setHeadless(false);
+    application.run(args);
   }
 }

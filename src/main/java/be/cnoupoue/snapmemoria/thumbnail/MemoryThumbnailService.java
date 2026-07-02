@@ -3,8 +3,7 @@ package be.cnoupoue.snapmemoria.thumbnail;
 import be.cnoupoue.snapmemoria.memory.SnapMemory;
 import be.cnoupoue.snapmemoria.memory.SnapMemoryRepository;
 import be.cnoupoue.snapmemoria.memory.SnapMemoryType;
-import be.cnoupoue.snapmemoria.source.MemorySource;
-import be.cnoupoue.snapmemoria.source.MemorySourceRepository;
+import be.cnoupoue.snapmemoria.streaming.SecureMemoryPathResolver;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
@@ -28,7 +27,7 @@ public class MemoryThumbnailService {
   private static final Duration FFMPEG_TIMEOUT = Duration.ofSeconds(30);
 
   private final SnapMemoryRepository snapMemoryRepository;
-  private final MemorySourceRepository memorySourceRepository;
+  private final SecureMemoryPathResolver secureMemoryPathResolver;
   private final Path thumbnailDirectory;
   private final int maxWidth;
   private final int maxHeight;
@@ -39,14 +38,14 @@ public class MemoryThumbnailService {
 
   public MemoryThumbnailService(
       SnapMemoryRepository snapMemoryRepository,
-      MemorySourceRepository memorySourceRepository,
+      SecureMemoryPathResolver secureMemoryPathResolver,
       @Value("${snapmemoria.thumbnail.directory}") String thumbnailDirectory,
       @Value("${snapmemoria.thumbnail.max-width}") int maxWidth,
       @Value("${snapmemoria.thumbnail.max-height}") int maxHeight,
       @Value("${snapmemoria.ffmpeg.path:ffmpeg}") String ffmpegPath,
       @Value("${snapmemoria.thumbnail.video-seek-seconds:1}") int videoSeekSeconds) {
     this.snapMemoryRepository = snapMemoryRepository;
-    this.memorySourceRepository = memorySourceRepository;
+    this.secureMemoryPathResolver = secureMemoryPathResolver;
     this.thumbnailDirectory = Path.of(thumbnailDirectory).toAbsolutePath().normalize();
     this.maxWidth = maxWidth;
     this.maxHeight = maxHeight;
@@ -263,30 +262,6 @@ public class MemoryThumbnailService {
 
   private Path resolveSecureMediaPath(
       String sourceId, String storedMediaPath, String unavailableMessage) {
-    MemorySource source =
-        memorySourceRepository
-            .findById(sourceId)
-            .orElseThrow(
-                () ->
-                    new ResponseStatusException(HttpStatus.NOT_FOUND, "Memory source not found."));
-
-    try {
-      Path sourceRootPath = Path.of(source.getRootPath()).toRealPath();
-
-      Path mediaPath = Path.of(storedMediaPath).toRealPath();
-
-      if (!mediaPath.startsWith(sourceRootPath)) {
-        throw new ResponseStatusException(
-            HttpStatus.FORBIDDEN, "The requested file is outside the configured memory source.");
-      }
-
-      if (!Files.isRegularFile(mediaPath) || !Files.isReadable(mediaPath)) {
-        throw new ResponseStatusException(HttpStatus.NOT_FOUND, unavailableMessage);
-      }
-
-      return mediaPath;
-    } catch (IOException exception) {
-      throw new ResponseStatusException(HttpStatus.NOT_FOUND, unavailableMessage);
-    }
+    return secureMemoryPathResolver.resolve(sourceId, storedMediaPath, unavailableMessage);
   }
 }

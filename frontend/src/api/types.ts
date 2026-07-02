@@ -72,6 +72,12 @@ export type SourceAvailability = {
   availabilityMessage: string;
 };
 
+export type FolderSelection = {
+  selected: boolean;
+  path: string | null;
+  name: string | null;
+};
+
 export type CreateMemorySourceRequest = {
   name: string;
   rootPath: string;

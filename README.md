@@ -24,6 +24,7 @@ SnapMemoria is designed to be local-first.
 
 * Your original Snapchat files stay where they are.
 * Your media is not uploaded to a cloud service.
+* Choosing a folder only gives SnapMemoria the local folder path; it does not upload, copy, move, or duplicate your media.
 * The application runs on your computer by default.
 * Local paths, SQLite databases, thumbnails, and personal exports should never be committed to Git.
 
@@ -53,7 +54,7 @@ ffmpeg -version
 ### Clone and install
 
 ```bash
-git clone https://github.com/cameronnoupoue/snapmemoria.git
+git clone https://github.com/cnoupoue/snapmemoria.git
 cd snapmemoria
 make install
 ```
@@ -100,8 +101,8 @@ make health
 ### Add your Snapchat export
 
 1. Open **Settings** in the application.
-2. Add the parent folder containing your Snapchat export.
-3. Select the folder that contains directories such as:
+2. Click **Choose Snapchat export folder**.
+3. Select the parent folder containing your Snapchat export, such as:
 
 ```text
 snapchat-memories/
@@ -115,6 +116,8 @@ snapchat-memories/
 5. Browse your archive through the timeline.
 
 Do not select an individual `memories` folder when your export contains multiple folders. Select the parent `snapchat-memories` folder instead.
+
+The folder picker is local to the machine running SnapMemoria. It indexes files in place and never uploads or copies your personal media. If native folder selection is unavailable, for example in a headless environment, enter the folder path manually in Settings.
 
 ## Local commands
 

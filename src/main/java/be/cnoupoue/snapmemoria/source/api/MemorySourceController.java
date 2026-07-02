@@ -2,6 +2,7 @@ package be.cnoupoue.snapmemoria.source.api;
 
 import be.cnoupoue.snapmemoria.indexing.MemoryScanJobService;
 import be.cnoupoue.snapmemoria.source.MemorySourceService;
+import be.cnoupoue.snapmemoria.source.NativeFolderPickerService;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -14,11 +15,15 @@ public class MemorySourceController {
 
   private final MemorySourceService memorySourceService;
   private final MemoryScanJobService memoryScanJobService;
+  private final NativeFolderPickerService nativeFolderPickerService;
 
   public MemorySourceController(
-      MemorySourceService memorySourceService, MemoryScanJobService memoryScanJobService) {
+      MemorySourceService memorySourceService,
+      MemoryScanJobService memoryScanJobService,
+      NativeFolderPickerService nativeFolderPickerService) {
     this.memorySourceService = memorySourceService;
     this.memoryScanJobService = memoryScanJobService;
+    this.nativeFolderPickerService = nativeFolderPickerService;
   }
 
   @PostMapping
@@ -30,6 +35,11 @@ public class MemorySourceController {
   @GetMapping
   public List<MemorySourceResponse> findAll() {
     return memorySourceService.findAll();
+  }
+
+  @PostMapping("/select-folder")
+  public FolderSelectionResponse selectFolder() {
+    return nativeFolderPickerService.selectFolder();
   }
 
   @GetMapping("/{id}/availability")
