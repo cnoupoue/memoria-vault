@@ -206,6 +206,23 @@ Production mode embeds the compiled React frontend in the Spring Boot JAR, serve
 
 This JAR is the foundation for future macOS packaging with `jpackage`.
 
+## macOS packaging
+
+Maintainers can build the first Apple Silicon package with:
+
+```bash
+make package-macos
+```
+
+This creates:
+
+```text
+dist/app/SnapMemoria.app
+dist/installers/SnapMemoria-<version>-macos-arm64.dmg
+```
+
+The package includes a bundled Java runtime and the production JAR with the React frontend embedded. It is intended for macOS Apple Silicon, and it is unsigned and not notarized yet. macOS may show a security warning for unsigned local builds. Code signing and notarization are planned future release steps.
+
 Format the complete project:
 
 ```bash

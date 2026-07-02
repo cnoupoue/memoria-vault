@@ -3,6 +3,7 @@ HELP.md
 # Maven / Java builds
 target/
 build/
+dist/
 !**/src/main/**/target/
 !**/src/test/**/target/
 !**/src/main/**/build/

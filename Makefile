@@ -1,16 +1,34 @@
 .DEFAULT_GOAL := help
 
-APP_NAME ?= snapmemoria
-APP_VERSION ?= $(shell sed -n '/<artifactId>snapmemoria<\/artifactId>/,/<\/version>/ s:.*<version>\(.*\)</version>.*:\1:p' pom.xml | head -n 1)
-JAR_PATH ?= target/$(APP_NAME)-$(APP_VERSION).jar
+ARTIFACT_ID ?= snapmemoria
+APP_NAME ?= SnapMemoria
+APP_ID ?= be.cnoupoue.snapmemoria
+APP_VERSION ?= $(shell sed -n '/<artifactId>$(ARTIFACT_ID)<\/artifactId>/,/<\/version>/ s:.*<version>\(.*\)</version>.*:\1:p' pom.xml | head -n 1)
+JPACKAGE_VERSION ?= $(shell printf '%s\n' '$(APP_VERSION)' | sed 's/-SNAPSHOT$$//' | sed 's/[^0-9.].*//' | awk -F. '{ major=$$1 + 0; minor=$$2 + 0; patch=$$3 + 0; if (major < 1) major = 1; printf "%d.%d.%d\n", major, minor, patch }')
+JAR_PATH ?= target/$(ARTIFACT_ID)-$(APP_VERSION).jar
 SPRING_PROFILE ?= production
+SPRING_ARGS ?= --spring.profiles.active=$(SPRING_PROFILE)
+DIST_DIR ?= dist
+APP_OUTPUT_DIR ?= $(DIST_DIR)/app
+INSTALLER_OUTPUT_DIR ?= $(DIST_DIR)/installers
+JPACKAGE_INPUT_DIR ?= $(DIST_DIR)/jpackage-input
+MACOS_ARCH ?= arm64
+MACOS_ICON ?= packaging/macos/$(APP_NAME).icns
+MACOS_ICON_SOURCE ?= frontend/public/favicon.png
+MACOS_APP_PATH ?= $(APP_OUTPUT_DIR)/$(APP_NAME).app
+MACOS_DMG_PATH ?= $(INSTALLER_OUTPUT_DIR)/$(APP_NAME)-$(APP_VERSION)-macos-$(MACOS_ARCH).dmg
+JLINK_OPTIONS ?= --strip-debug --no-man-pages --no-header-files --compress zip-6
 
 .PHONY: help install dev run-backend run-frontend \
 	format format-backend format-frontend \
 	format-check format-check-backend format-check-frontend \
 	lint lint-fix test test-backend test-frontend \
 	build build-backend build-frontend build-production package-jar \
-	run-production verify-production inspect-jar verify clean health
+	run-production verify-production inspect-jar \
+	package-macos-app package-macos-dmg package-macos run-macos-app \
+	inspect-macos-app clean-packaging generate-macos-icon prepare-macos-input \
+	check-macos check-macos-arm64 check-jpackage check-icon-tools \
+	check-production-jar verify clean health
 
 help: ## Show available commands
 	@echo ""
@@ -115,6 +133,98 @@ inspect-jar: ## Verify the production JAR contains the compiled React entrypoint
 	@jar tf "$(JAR_PATH)" | grep -qx 'BOOT-INF/classes/static/favicon.png'
 	@echo "Production JAR contains embedded React assets."
 
+check-macos:
+	@test "$$(uname -s)" = "Darwin" || { echo "macOS packaging requires macOS."; exit 1; }
+
+check-macos-arm64: check-macos
+	@test "$$(uname -m)" = "$(MACOS_ARCH)" || { echo "macOS packaging currently requires $(MACOS_ARCH). Found: $$(uname -m)"; exit 1; }
+
+check-jpackage:
+	@command -v jpackage >/dev/null 2>&1 || { echo "jpackage is required. Use a JDK that includes jpackage."; exit 1; }
+
+check-icon-tools: check-macos
+	@command -v sips >/dev/null 2>&1 || { echo "sips is required to generate the macOS icon."; exit 1; }
+	@command -v node >/dev/null 2>&1 || { echo "node is required to generate the macOS icon fallback."; exit 1; }
+
+check-production-jar:
+	@test -f "$(JAR_PATH)" || { echo "Missing production JAR: $(JAR_PATH). Run 'make package-jar' first."; exit 1; }
+
+prepare-macos-input: package-jar ## Stage only the production JAR for jpackage
+	@rm -rf "$(JPACKAGE_INPUT_DIR)"
+	@mkdir -p "$(JPACKAGE_INPUT_DIR)"
+	cp "$(JAR_PATH)" "$(JPACKAGE_INPUT_DIR)/"
+
+generate-macos-icon: check-icon-tools ## Generate packaging/macos/SnapMemoria.icns from the favicon PNG
+	@test -f "$(MACOS_ICON_SOURCE)" || { echo "Missing icon source: $(MACOS_ICON_SOURCE)"; exit 1; }
+	@set -e; \
+	tmp_dir="$$(mktemp -d "$${TMPDIR:-/tmp}/snapmemoria-icon.XXXXXX")"; \
+	iconset="$$tmp_dir/$(APP_NAME).iconset"; \
+	mkdir -p "$$iconset" "$$(dirname "$(MACOS_ICON)")"; \
+	sips -z 16 16 "$(MACOS_ICON_SOURCE)" --out "$$iconset/icon_16x16.png" >/dev/null; \
+	sips -z 32 32 "$(MACOS_ICON_SOURCE)" --out "$$iconset/icon_16x16@2x.png" >/dev/null; \
+	sips -z 32 32 "$(MACOS_ICON_SOURCE)" --out "$$iconset/icon_32x32.png" >/dev/null; \
+	sips -z 64 64 "$(MACOS_ICON_SOURCE)" --out "$$iconset/icon_32x32@2x.png" >/dev/null; \
+	sips -z 128 128 "$(MACOS_ICON_SOURCE)" --out "$$iconset/icon_128x128.png" >/dev/null; \
+	sips -z 256 256 "$(MACOS_ICON_SOURCE)" --out "$$iconset/icon_128x128@2x.png" >/dev/null; \
+	sips -z 256 256 "$(MACOS_ICON_SOURCE)" --out "$$iconset/icon_256x256.png" >/dev/null; \
+	sips -z 512 512 "$(MACOS_ICON_SOURCE)" --out "$$iconset/icon_256x256@2x.png" >/dev/null; \
+	sips -z 512 512 "$(MACOS_ICON_SOURCE)" --out "$$iconset/icon_512x512.png" >/dev/null; \
+	sips -z 1024 1024 "$(MACOS_ICON_SOURCE)" --out "$$iconset/icon_512x512@2x.png" >/dev/null; \
+	if command -v iconutil >/dev/null 2>&1 && iconutil -c icns "$$iconset" -o "$(MACOS_ICON)" >/dev/null 2>&1; then \
+		true; \
+	else \
+		node packaging/macos/create-icns.mjs "$$iconset" "$(MACOS_ICON)"; \
+	fi; \
+	rm -rf "$$tmp_dir"; \
+	test -f "$(MACOS_ICON)" || { echo "Icon generation failed: $(MACOS_ICON)"; exit 1; }
+
+package-macos-app: prepare-macos-input generate-macos-icon check-macos-arm64 check-jpackage ## Create dist/app/SnapMemoria.app with a bundled runtime
+	@rm -rf "$(MACOS_APP_PATH)"
+	@mkdir -p "$(APP_OUTPUT_DIR)"
+	jpackage \
+		--type app-image \
+		--dest "$(APP_OUTPUT_DIR)" \
+		--name "$(APP_NAME)" \
+		--app-version "$(JPACKAGE_VERSION)" \
+		--vendor "cnoupoue" \
+		--description "Local-first Snapchat Memories browser" \
+		--mac-package-identifier "$(APP_ID)" \
+		--input "$(JPACKAGE_INPUT_DIR)" \
+		--main-jar "$$(basename "$(JAR_PATH)")" \
+		--arguments "$(SPRING_ARGS)" \
+		--icon "$(MACOS_ICON)" \
+		--jlink-options "$(JLINK_OPTIONS)"
+
+package-macos-dmg: package-macos-app ## Create dist/installers/SnapMemoria-<version>-macos-arm64.dmg
+	@rm -f "$(MACOS_DMG_PATH)"
+	@mkdir -p "$(INSTALLER_OUTPUT_DIR)"
+	jpackage \
+		--type dmg \
+		--dest "$(INSTALLER_OUTPUT_DIR)" \
+		--app-image "$(MACOS_APP_PATH)" \
+		--name "$(APP_NAME)" \
+		--app-version "$(JPACKAGE_VERSION)" \
+		--vendor "cnoupoue" \
+		--mac-package-identifier "$(APP_ID)"
+	@mv "$(INSTALLER_OUTPUT_DIR)/$(APP_NAME)-$(JPACKAGE_VERSION).dmg" "$(MACOS_DMG_PATH)"
+
+package-macos: package-macos-dmg ## Build the macOS app image and DMG
+
+run-macos-app: inspect-macos-app ## Open the generated SnapMemoria.app
+	open "$(MACOS_APP_PATH)"
+
+inspect-macos-app: ## Verify the generated macOS app bundle looks runnable
+	@test "$$(uname -s)" = "Darwin" || { echo "macOS app inspection requires macOS."; exit 1; }
+	@test -d "$(MACOS_APP_PATH)" || { echo "Missing app bundle: $(MACOS_APP_PATH). Run 'make package-macos-app' first."; exit 1; }
+	@test -d "$(MACOS_APP_PATH)/Contents/runtime" || { echo "Missing bundled runtime in $(MACOS_APP_PATH)."; exit 1; }
+	@test -f "$(MACOS_APP_PATH)/Contents/app/$$(basename "$(JAR_PATH)")" || { echo "Missing bundled JAR in $(MACOS_APP_PATH)."; exit 1; }
+	@test ! -f "$(MACOS_ICON)" || test -f "$(MACOS_APP_PATH)/Contents/Resources/$(APP_NAME).icns" || { echo "Missing app icon in $(MACOS_APP_PATH)."; exit 1; }
+	@test -x "$(MACOS_APP_PATH)/Contents/MacOS/$(APP_NAME)" || { echo "Missing app launcher executable."; exit 1; }
+	@echo "macOS app bundle is present and contains its runtime, launcher, JAR, and icon."
+
+clean-packaging: ## Remove generated packaging artifacts only
+	rm -rf "$(DIST_DIR)"
+
 verify: ## Run all formatting checks, linting, tests, and builds
 	$(MAKE) format-check
 	$(MAKE) lint
@@ -124,6 +234,7 @@ verify: ## Run all formatting checks, linting, tests, and builds
 clean: ## Remove generated build and test files
 	./mvnw clean
 	rm -rf frontend/dist frontend/coverage
+	$(MAKE) clean-packaging
 
 health: ## Check whether the local backend is running
 	curl --fail http://127.0.0.1:8080/actuator/health
