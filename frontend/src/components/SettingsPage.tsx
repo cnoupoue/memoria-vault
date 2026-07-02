@@ -24,6 +24,9 @@ import type {
   SourceAvailabilityStatus,
 } from '../api/types';
 
+const INDEPENDENCE_DISCLAIMER =
+  'This application is an independent, open-source local tool and is not affiliated, associated, authorized, endorsed by, or in any way officially connected with Snap Inc. or Snapchat.';
+
 function formatDate(value: string | null): string {
   if (!value) {
     return 'Never';
@@ -127,7 +130,7 @@ function formatDatabaseStatus(status: string): string {
 
 function buildDiagnosticReport(diagnostics: Diagnostics): string {
   const lines = [
-    'SnapMemoria diagnostics',
+    'Memoria Vault diagnostics',
     '',
     `App version: ${diagnostics.appVersion}`,
   ];
@@ -450,7 +453,7 @@ export function SettingsPage({
 
       upsertSource(createdSource);
       await loadDiagnostics();
-      setSuccessMessage('Your source was added. Scanning Memories locally…');
+      setSuccessMessage('Your source was added. Scanning memories locally…');
       onSourceCreated?.(createdSource);
 
       setName('');
@@ -509,7 +512,7 @@ export function SettingsPage({
 
   async function handleDelete(source: MemorySource) {
     const confirmed = window.confirm(
-      `Remove "${source.name}" from SnapMemoria?\n\nThis only removes the configured source. It will not delete any files from your drive.`,
+      `Remove "${source.name}" from Memoria Vault?\n\nThis only removes the configured source. It will not delete any files from your drive.`,
     );
 
     if (!confirmed) {
@@ -574,7 +577,7 @@ export function SettingsPage({
       {successMessage && (
         <div className="scan-result-banner">
           <strong>{successMessage}</strong>
-          <span>SnapMemoria indexes your Memories in place.</span>
+          <span>Memoria Vault indexes your memories in place.</span>
         </div>
       )}
 
@@ -582,7 +585,7 @@ export function SettingsPage({
         <div className="scan-result-banner">
           <strong>
             {scanJob.status === 'RUNNING'
-              ? 'Scanning Memories…'
+              ? 'Scanning memories…'
               : scanJob.status === 'COMPLETED'
                 ? 'Scan completed'
                 : 'Scan failed'}
@@ -614,7 +617,7 @@ export function SettingsPage({
             </>
           ) : (
             <span>
-              {scanJob.indexedMemories.toLocaleString()} Memories indexed ·{' '}
+              {scanJob.indexedMemories.toLocaleString()} memories indexed ·{' '}
               {scanJob.mainImages.toLocaleString()} photos ·{' '}
               {scanJob.mainVideos.toLocaleString()} videos
             </span>
@@ -652,7 +655,7 @@ export function SettingsPage({
             <dl className="diagnostics-grid">
               <div>
                 <dt>Application</dt>
-                <dd>SnapMemoria {diagnostics.appVersion}</dd>
+                <dd>Memoria Vault {diagnostics.appVersion}</dd>
               </div>
               <div>
                 <dt>Video previews</dt>
@@ -704,7 +707,7 @@ export function SettingsPage({
         <div className="settings-section-header">
           <div>
             <p className="eyebrow">New location</p>
-            <h3>Add a Memories source</h3>
+            <h3>Add an archive source</h3>
           </div>
         </div>
 
@@ -717,11 +720,11 @@ export function SettingsPage({
           >
             {isSelectingFolder
               ? 'Opening folder picker…'
-              : 'Choose Snapchat export folder'}
+              : 'Choose exported archive folder'}
           </button>
           <p>
-            Choose the parent folder that contains your “memories”, “memories
-            2”, and similar export folders.
+            Choose the parent folder that contains compatible exported memories
+            folders, such as “memories”, “memories 2”, and similar folders.
           </p>
         </div>
 
@@ -740,7 +743,7 @@ export function SettingsPage({
             <input
               ref={nameInputRef}
               onChange={(event) => setName(event.target.value)}
-              placeholder="Snapchat Memories USB"
+              placeholder="Family archive drive"
               value={name}
             />
           </label>
@@ -749,7 +752,7 @@ export function SettingsPage({
             Or enter the folder path manually
             <input
               onChange={(event) => setRootPath(event.target.value)}
-              placeholder="/Volumes/MY_USB/snapchat-memories"
+              placeholder="/Volumes/MY_DRIVE/exported-archive"
               value={rootPath}
             />
           </label>
@@ -765,7 +768,8 @@ export function SettingsPage({
 
         <p className="form-hint">
           Select the parent folder containing <code>memories</code>,{' '}
-          <code>memories 2</code>, and any later folders.
+          <code>memories 2</code>, and any later folders. Supports compatible
+          Snapchat export folder structures.
         </p>
       </section>
 
@@ -792,7 +796,7 @@ export function SettingsPage({
 
         {!isLoading && sources.length === 0 && (
           <div className="state-message">
-            No source configured yet. Add your Snapchat export folder above.
+            No source configured yet. Add an exported archive folder above.
           </div>
         )}
 
@@ -872,6 +876,21 @@ export function SettingsPage({
             })}
           </div>
         )}
+      </section>
+
+      <section className="settings-section">
+        <div className="settings-section-header">
+          <div>
+            <p className="eyebrow">About</p>
+            <h3>Independent tool</h3>
+          </div>
+        </div>
+
+        <p className="diagnostic-message">{INDEPENDENCE_DISCLAIMER}</p>
+        <p className="diagnostic-message">
+          Compatible Snapchat export formats may be read locally. Compatibility
+          references are descriptive only.
+        </p>
       </section>
     </section>
   );

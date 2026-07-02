@@ -1,5 +1,8 @@
 import { useState } from 'react';
 
+const INDEPENDENCE_DISCLAIMER =
+  'This application is an independent, open-source local tool and is not affiliated, associated, authorized, endorsed by, or in any way officially connected with Snap Inc. or Snapchat.';
+
 type OnboardingPageProps = {
   onAddSource: () => void;
 };
@@ -11,11 +14,11 @@ export function OnboardingPage({ onAddSource }: OnboardingPageProps) {
     <section className="content onboarding-page">
       <div className="onboarding-hero">
         <p className="eyebrow">First launch</p>
-        <h2>Welcome to SnapMemoria</h2>
+        <h2>Welcome to Memoria Vault</h2>
         <p className="onboarding-lede">
-          Your Snapchat Memories should not stay buried in folders. SnapMemoria
-          helps you browse exported Memories by year, month, and flashbacks
-          directly from your computer or USB drive.
+          Your memories should not stay buried in folders. Memoria Vault helps
+          you browse compatible exported memories by year, month, and flashbacks
+          directly from your computer or external drive.
         </p>
 
         <div className="privacy-note">
@@ -29,7 +32,7 @@ export function OnboardingPage({ onAddSource }: OnboardingPageProps) {
             onClick={onAddSource}
             type="button"
           >
-            Add your Snapchat export
+            Add exported archive
           </button>
           <button
             className="secondary-button"
@@ -46,8 +49,11 @@ export function OnboardingPage({ onAddSource }: OnboardingPageProps) {
           <ol className="onboarding-steps">
             <li>
               <span>Step 1</span>
-              <strong>Find your Snapchat export folder.</strong>
-              <p>Use the folder from your downloaded Snapchat data export.</p>
+              <strong>Find your exported archive folder.</strong>
+              <p>
+                Use the folder from your downloaded data export. Compatible
+                Snapchat export folder structures are supported descriptively.
+              </p>
             </li>
             <li>
               <span>Step 2</span>
@@ -61,7 +67,7 @@ export function OnboardingPage({ onAddSource }: OnboardingPageProps) {
               <span>Step 3</span>
               <strong>Scan locally and start browsing.</strong>
               <p>
-                SnapMemoria indexes metadata on your computer so your archive
+                Memoria Vault indexes metadata on your computer so your archive
                 becomes easy to explore.
               </p>
             </li>
@@ -70,14 +76,12 @@ export function OnboardingPage({ onAddSource }: OnboardingPageProps) {
 
         <section className="folder-example-panel">
           <p className="eyebrow">Correct folder</p>
-          <pre className="folder-tree">{`snapchat-memories/
+          <pre className="folder-tree">{`exported-archive/
 ├── memories/
 ├── memories 2/
 ├── memories 3/
 └── ...`}</pre>
-          <p>
-            Select the parent <strong>snapchat-memories</strong> folder.
-          </p>
+          <p>Select the parent exported archive folder.</p>
           <p>
             Do not select only <strong>memories/</strong> if your export
             contains <strong>memories 2</strong>, <strong>memories 3</strong>,
@@ -90,13 +94,22 @@ export function OnboardingPage({ onAddSource }: OnboardingPageProps) {
         <section className="onboarding-help">
           <h3>Where to look</h3>
           <p>
-            After downloading your Snapchat data, unzip the export and look for
-            the folder that groups your Memories folders together. External USB
+            After downloading your archive data, unzip the export and look for
+            the folder that groups your memories folders together. External
             drives are supported as long as the drive is connected when you scan
             or view media.
           </p>
         </section>
       )}
+
+      <section className="onboarding-help">
+        <h3>Independent tool</h3>
+        <p>{INDEPENDENCE_DISCLAIMER}</p>
+        <p>
+          Compatible Snapchat export formats may be read locally. Compatibility
+          references are descriptive only.
+        </p>
+      </section>
     </section>
   );
 }

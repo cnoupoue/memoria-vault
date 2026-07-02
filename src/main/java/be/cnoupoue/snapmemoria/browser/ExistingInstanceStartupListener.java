@@ -50,14 +50,14 @@ public class ExistingInstanceStartupListener
     InstanceProbeResult result = instanceProbe.probe(browserUrl);
 
     if (result == InstanceProbeResult.HEALTHY_SNAPMEMORIA) {
-      LOGGER.info("SnapMemoria is already running. Opening the existing app.");
+      LOGGER.info("Memoria Vault is already running. Opening the existing app.");
       openExistingApp(browserUrl);
       processExit.exit(0);
     }
 
     if (result == InstanceProbeResult.UNRELATED_SERVICE) {
       LOGGER.error(
-          "Port 8080 is already in use by another service. Stop that service before starting SnapMemoria.");
+          "Port 8080 is already in use by another service. Stop that service before starting Memoria Vault.");
       processExit.exit(1);
     }
   }
@@ -83,7 +83,7 @@ public class ExistingInstanceStartupListener
     try {
       browserLauncher.open(browserUrl);
     } catch (BrowserLaunchException exception) {
-      LOGGER.warn("Could not open SnapMemoria in the default browser.");
+      LOGGER.warn("Could not open Memoria Vault in the default browser.");
     }
   }
 

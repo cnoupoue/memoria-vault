@@ -205,9 +205,7 @@ public class MemoryThumbnailService {
 
     Path overlayPath =
         resolveSecureMediaPath(
-            memory.getSourceId(),
-            memory.getOverlayPath(),
-            "The Snapchat overlay file is unavailable.");
+            memory.getSourceId(), memory.getOverlayPath(), "The overlay file is unavailable.");
 
     try {
       BufferedImage overlayImage = ImageIO.read(overlayPath.toFile());

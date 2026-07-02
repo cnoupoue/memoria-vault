@@ -47,7 +47,7 @@ public class DesktopNativeFolderPicker implements NativeFolderPicker {
     System.setProperty("apple.awt.fileDialogForDirectories", "true");
 
     FileDialog dialog =
-        new FileDialog((Frame) null, "Choose Snapchat export folder", FileDialog.LOAD);
+        new FileDialog((Frame) null, "Choose exported archive folder", FileDialog.LOAD);
 
     try {
       dialog.setDirectory(System.getProperty("user.home"));
@@ -81,7 +81,7 @@ public class DesktopNativeFolderPicker implements NativeFolderPicker {
           () -> {
             try {
               JFileChooser chooser = new JFileChooser();
-              chooser.setDialogTitle("Choose Snapchat export folder");
+              chooser.setDialogTitle("Choose exported archive folder");
               chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
               chooser.setAcceptAllFileFilterUsed(false);
 

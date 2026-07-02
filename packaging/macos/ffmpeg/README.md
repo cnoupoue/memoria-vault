@@ -1,6 +1,6 @@
 # Bundled FFmpeg for macOS
 
-SnapMemoria can include a verified FFmpeg executable in the macOS Apple Silicon app bundle for video thumbnail generation.
+Memoria Vault can include a verified FFmpeg executable in the macOS Apple Silicon app bundle for video thumbnail generation.
 
 Expected binary location:
 

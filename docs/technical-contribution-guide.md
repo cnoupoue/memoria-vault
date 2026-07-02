@@ -1,10 +1,14 @@
 # Technical Contribution Guide
 
-This document explains how SnapMemoria is structured, how to run it locally, and how to contribute safely.
+This document explains how Memoria Vault is structured, how to run it locally, and how to contribute safely.
+
+Memoria Vault is an independent, open-source local tool and is not affiliated, associated, authorized, endorsed by, or in any way officially connected with Snap Inc. or Snapchat. Compatibility references in this guide are descriptive only.
+
+Maintainer note: this rebrand reduces perceived affiliation risk, but it does not replace trademark clearance or legal advice. Public launch should include an independent trademark search for the final app name and legal review.
 
 ## Project overview
 
-SnapMemoria is a local-first application for browsing exported Snapchat Memories.
+Memoria Vault is a local-first application for browsing compatible exported memories.
 
 The project is split into two applications:
 
@@ -19,7 +23,7 @@ snapmemoria/
 └── README.md
 ```
 
-The backend indexes exported Snapchat media files into SQLite. It stores metadata and local file paths only; original media remains in place on local storage or an external drive.
+The backend indexes exported media files into SQLite. It stores metadata and local file paths only; original media remains in place on local storage or an external drive.
 
 The frontend provides:
 
@@ -41,7 +45,7 @@ Spring Boot REST API
     ↓
 SQLite metadata index
     ↓
-Configured Snapchat export folders
+Configured archive source folders
     ↓
 Original files on USB drive or local storage
 ```
@@ -62,11 +66,11 @@ During development, Vite proxies `/api` requests to Spring Boot.
 
 ## Local storage model
 
-Original Snapchat Memories are never copied into the repository.
+Original exported memories are never copied into the repository.
 
 The source folder picker is a local desktop convenience. It returns only the folder path selected by the user through the native picker; it must not upload, copy, move, or duplicate personal media. Manual path entry remains available for advanced users and for headless environments where native folder selection is unavailable.
 
-SnapMemoria stores local application data under:
+Memoria Vault stores local application data under:
 
 ```text
 ~/.snapmemoria/
@@ -86,9 +90,9 @@ This includes:
 
 Do not commit these files.
 
-## Snapchat export format
+## Compatible export format
 
-SnapMemoria currently supports filenames such as:
+Memoria Vault currently supports filenames such as:
 
 ```text
 2019-10-05_493C7A65-6059-48C0-81F1-9A7D3E068856-main.jpg
@@ -100,7 +104,7 @@ The scanner extracts:
 
 ```text
 Captured date
-External Snapchat identifier
+External identifier
 Media type
 Main media file path
 Optional overlay path
@@ -111,7 +115,7 @@ Last modified timestamp
 A source should point to the parent folder containing all exported subfolders:
 
 ```text
-snapchat-memories/
+exported-archive/
 ├── memories/
 ├── memories 2/
 ├── memories 3/
@@ -140,7 +144,7 @@ Verify the installation:
 ffmpeg -version
 ```
 
-FFmpeg is used only for video thumbnail generation. Original video playback works through the media streaming endpoint even when FFmpeg is unavailable. During development, SnapMemoria resolves FFmpeg from `snapmemoria.ffmpeg.path` first, then a packaged app bundle location if present, then the system `PATH`.
+FFmpeg is used only for video thumbnail generation. Original video playback works through the media streaming endpoint even when FFmpeg is unavailable. During development, Memoria Vault resolves FFmpeg from `snapmemoria.ffmpeg.path` first, then a packaged app bundle location if present, then the system `PATH`.
 
 ## Initial setup
 
@@ -219,7 +223,7 @@ be.cnoupoue.snapmemoria/
 
 ### `source`
 
-Manages configured parent folders containing Snapchat exports.
+Manages configured parent folders containing compatible export structures.
 
 Important responsibilities:
 
@@ -284,7 +288,7 @@ The backend retrieves file paths from SQLite and validates that they remain insi
 
 Never add an endpoint that accepts an arbitrary filesystem path from the client.
 
-The folder picker endpoint is the exception for source setup: it accepts no path input, opens a local native folder chooser on the machine running SnapMemoria, and returns only the user-selected folder. In headless or unsupported environments, it returns a structured `FOLDER_PICKER_UNAVAILABLE` error and the frontend keeps manual path entry available.
+The folder picker endpoint is the exception for source setup: it accepts no path input, opens a local native folder chooser on the machine running Memoria Vault, and returns only the user-selected folder. In headless or unsupported environments, it returns a structured `FOLDER_PICKER_UNAVAILABLE` error and the frontend keeps manual path entry available.
 
 ### `thumbnail`
 
@@ -346,9 +350,9 @@ The test profile uses a temporary SQLite database and must never use your person
 
 Backend tests should cover:
 
-* Snapchat filename parsing
+* compatible filename parsing
 * Main media and overlay association
-* Duplicate Snapchat identifiers
+* Duplicate external identifiers
 * Missing source folders
 * Media access restricted to configured source paths
 * Timeline queries
@@ -477,16 +481,16 @@ Before opening a pull request:
 4. Add screenshots for meaningful UI changes.
 5. Describe the user-visible impact.
 6. Explain database migrations when applicable.
-7. Do not include personal files, private paths, or Snapchat exports.
+7. Do not include personal files, private paths, or compatible export structures.
 
 ## Security and privacy rules
 
-SnapMemoria handles private media.
+Memoria Vault handles private media.
 
 Never commit:
 
 ```text
-Snapchat exports
+compatible export structures
 Photos or videos from a personal archive
 SQLite databases
 Thumbnail cache files

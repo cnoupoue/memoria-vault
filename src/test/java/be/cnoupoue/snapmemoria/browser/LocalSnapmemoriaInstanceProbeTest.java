@@ -20,7 +20,7 @@ class LocalSnapmemoriaInstanceProbeTest {
     try (TestHttpServer server =
         TestHttpServer.create()
             .responding("/actuator/health", 200, "{\"status\":\"UP\"}")
-            .responding("/actuator/info", 200, "{\"app\":{\"name\":\"snapmemoria\"}}")) {
+            .responding("/actuator/info", 200, "{\"app\":{\"name\":\"memoria-vault\"}}")) {
 
       InstanceProbeResult result = instanceProbe.probe(server.uri());
 
@@ -46,7 +46,7 @@ class LocalSnapmemoriaInstanceProbeTest {
     try (TestHttpServer server =
         TestHttpServer.create()
             .responding("/actuator/health", 200, "not-json")
-            .responding("/actuator/info", 200, "{\"app\":{\"name\":\"snapmemoria\"}}")) {
+            .responding("/actuator/info", 200, "{\"app\":{\"name\":\"memoria-vault\"}}")) {
 
       InstanceProbeResult result = instanceProbe.probe(server.uri());
 

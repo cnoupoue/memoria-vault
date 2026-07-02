@@ -38,7 +38,7 @@ public class BrowserAutoOpenService {
       browserLauncher.open(browserUrl);
       return true;
     } catch (BrowserLaunchException exception) {
-      LOGGER.warn("Could not open SnapMemoria in the default browser.");
+      LOGGER.warn("Could not open Memoria Vault in the default browser.");
       return false;
     }
   }

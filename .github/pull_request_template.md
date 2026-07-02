@@ -19,6 +19,7 @@ Describe what you tested.
 * [ ] My branch and commit names follow project conventions
 * [ ] I did not add private media, local paths, databases, secrets, or cache files
 * [ ] I updated documentation when needed
+* [ ] Public-facing copy keeps Memoria Vault independent and uses compatibility references descriptively
 * [ ] I added screenshots for meaningful UI changes
 
 ## Screenshots

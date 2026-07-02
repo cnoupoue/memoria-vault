@@ -21,7 +21,7 @@ You will receive an acknowledgement as soon as possible.
 
 ## Scope
 
-The following areas are especially sensitive in SnapMemoria:
+The following areas are especially sensitive in Memoria Vault:
 
 * Local filesystem access
 * Media streaming endpoints
@@ -30,4 +30,4 @@ The following areas are especially sensitive in SnapMemoria:
 * GitHub Actions workflows
 * Dependencies and build tooling
 
-SnapMemoria is designed to handle private personal media locally. Security reports involving exposure of local paths, arbitrary file access, or unintended media access are especially important.
+Memoria Vault is designed to handle private personal media locally. Security reports involving exposure of local paths, arbitrary file access, or unintended media access are especially important.

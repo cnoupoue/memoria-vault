@@ -1,8 +1,9 @@
 .DEFAULT_GOAL := help
 
 ARTIFACT_ID ?= snapmemoria
-APP_NAME ?= SnapMemoria
-APP_ID ?= be.cnoupoue.snapmemoria
+APP_NAME ?= Memoria Vault
+APP_ARTIFACT_NAME ?= Memoria-Vault
+APP_ID ?= be.cnoupoue.memoriavault
 APP_VERSION ?= $(shell sed -n '/<artifactId>$(ARTIFACT_ID)<\/artifactId>/,/<\/version>/ s:.*<version>\(.*\)</version>.*:\1:p' pom.xml | head -n 1)
 JPACKAGE_VERSION ?= $(shell printf '%s\n' '$(APP_VERSION)' | sed 's/-SNAPSHOT$$//' | sed 's/[^0-9.].*//' | awk -F. '{ major=$$1 + 0; minor=$$2 + 0; patch=$$3 + 0; if (major < 1) major = 1; printf "%d.%d.%d\n", major, minor, patch }')
 JAR_PATH ?= target/$(ARTIFACT_ID)-$(APP_VERSION).jar
@@ -13,10 +14,10 @@ APP_OUTPUT_DIR ?= $(DIST_DIR)/app
 INSTALLER_OUTPUT_DIR ?= $(DIST_DIR)/installers
 JPACKAGE_INPUT_DIR ?= $(DIST_DIR)/jpackage-input
 MACOS_ARCH ?= arm64
-MACOS_ICON ?= packaging/macos/$(APP_NAME).icns
+MACOS_ICON ?= packaging/macos/MemoriaVault.icns
 MACOS_ICON_SOURCE ?= frontend/public/favicon.png
 MACOS_APP_PATH ?= $(APP_OUTPUT_DIR)/$(APP_NAME).app
-MACOS_DMG_PATH ?= $(INSTALLER_OUTPUT_DIR)/$(APP_NAME)-$(APP_VERSION)-macos-$(MACOS_ARCH).dmg
+MACOS_DMG_PATH ?= $(INSTALLER_OUTPUT_DIR)/$(APP_ARTIFACT_NAME)-$(APP_VERSION)-macos-$(MACOS_ARCH).dmg
 JLINK_OPTIONS ?= --strip-debug --no-man-pages --no-header-files --compress zip-6
 BUNDLED_FFMPEG_SOURCE ?= packaging/macos/ffmpeg/$(MACOS_ARCH)/ffmpeg
 BUNDLED_FFMPEG_APP_DIR ?= ffmpeg
@@ -26,7 +27,7 @@ BUNDLED_FFMPEG_APP_PATH ?= $(MACOS_APP_PATH)/Contents/app/$(BUNDLED_FFMPEG_APP_D
 .PHONY: help install dev run-backend run-frontend \
 	format format-backend format-frontend \
 	format-check format-check-backend format-check-frontend \
-	lint lint-fix test test-backend test-frontend \
+	lint lint-frontend lint-branding lint-fix test test-backend test-frontend \
 	build build-backend build-frontend build-production package-jar \
 	run-production verify-production inspect-jar \
 	package-macos-app package-macos-dmg package-macos run-macos-app \
@@ -37,7 +38,7 @@ BUNDLED_FFMPEG_APP_PATH ?= $(MACOS_APP_PATH)/Contents/app/$(BUNDLED_FFMPEG_APP_D
 
 help: ## Show available commands
 	@echo ""
-	@echo "SnapMemoria local commands"
+	@echo "Memoria Vault local commands"
 	@echo "Production JAR: $(JAR_PATH)"
 	@echo ""
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -88,8 +89,13 @@ format-check-backend: ## Check Java formatting with Spotless
 format-check-frontend: ## Check frontend formatting with Prettier
 	npm --prefix frontend run format:check
 
-lint: ## Run frontend linting
+lint: lint-frontend lint-branding ## Run frontend linting and public branding checks
+
+lint-frontend: ## Run frontend linting
 	npm --prefix frontend run lint
+
+lint-branding: ## Check public-facing branding guardrails
+	npm run lint:branding
 
 lint-fix: ## Automatically fix frontend lint issues where possible
 	npm --prefix frontend run lint:fix
@@ -170,7 +176,7 @@ prepare-bundled-ffmpeg: prepare-macos-input check-bundled-ffmpeg ## Stage bundle
 	install -m 755 "$(BUNDLED_FFMPEG_SOURCE)" "$(BUNDLED_FFMPEG_STAGED_PATH)"
 	@echo "Staged bundled FFmpeg at $(BUNDLED_FFMPEG_STAGED_PATH)"
 
-generate-macos-icon: check-icon-tools ## Generate packaging/macos/SnapMemoria.icns from the favicon PNG
+generate-macos-icon: check-icon-tools ## Generate the macOS app icon from the favicon PNG
 	@test -f "$(MACOS_ICON_SOURCE)" || { echo "Missing icon source: $(MACOS_ICON_SOURCE)"; exit 1; }
 	@set -e; \
 	tmp_dir="$$(mktemp -d "$${TMPDIR:-/tmp}/snapmemoria-icon.XXXXXX")"; \
@@ -194,7 +200,7 @@ generate-macos-icon: check-icon-tools ## Generate packaging/macos/SnapMemoria.ic
 	rm -rf "$$tmp_dir"; \
 	test -f "$(MACOS_ICON)" || { echo "Icon generation failed: $(MACOS_ICON)"; exit 1; }
 
-package-macos-app: prepare-bundled-ffmpeg generate-macos-icon check-macos-arm64 check-jpackage ## Create dist/app/SnapMemoria.app with a bundled runtime and FFmpeg
+package-macos-app: prepare-bundled-ffmpeg generate-macos-icon check-macos-arm64 check-jpackage ## Create dist/app/Memoria Vault.app with a bundled runtime and FFmpeg
 	@rm -rf "$(MACOS_APP_PATH)"
 	@mkdir -p "$(APP_OUTPUT_DIR)"
 	jpackage \
@@ -203,7 +209,7 @@ package-macos-app: prepare-bundled-ffmpeg generate-macos-icon check-macos-arm64 
 		--name "$(APP_NAME)" \
 		--app-version "$(JPACKAGE_VERSION)" \
 		--vendor "cnoupoue" \
-		--description "Local-first Snapchat Memories browser" \
+		--description "Private local archive viewer" \
 		--mac-package-identifier "$(APP_ID)" \
 		--input "$(JPACKAGE_INPUT_DIR)" \
 		--main-jar "$$(basename "$(JAR_PATH)")" \
@@ -211,7 +217,7 @@ package-macos-app: prepare-bundled-ffmpeg generate-macos-icon check-macos-arm64 
 		--icon "$(MACOS_ICON)" \
 		--jlink-options "$(JLINK_OPTIONS)"
 
-package-macos-dmg: package-macos-app ## Create dist/installers/SnapMemoria-<version>-macos-arm64.dmg
+package-macos-dmg: package-macos-app ## Create dist/installers/Memoria-Vault-<version>-macos-arm64.dmg
 	@rm -f "$(MACOS_DMG_PATH)"
 	@mkdir -p "$(INSTALLER_OUTPUT_DIR)"
 	jpackage \
@@ -226,7 +232,7 @@ package-macos-dmg: package-macos-app ## Create dist/installers/SnapMemoria-<vers
 
 package-macos: package-macos-dmg ## Build the macOS app image and DMG
 
-run-macos-app: inspect-macos-app ## Open the generated SnapMemoria.app
+run-macos-app: inspect-macos-app ## Open the generated Memoria Vault.app
 	open "$(MACOS_APP_PATH)"
 
 inspect-macos-app: ## Verify the generated macOS app bundle looks runnable

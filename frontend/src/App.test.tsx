@@ -135,15 +135,28 @@ function buildSource(source: Partial<MemorySource> = {}): MemorySource {
 }
 
 describe('App onboarding', () => {
+  it('sets the public browser title', async () => {
+    getMemorySourcesMock.mockResolvedValue([]);
+
+    render(<App />);
+
+    await screen.findByText('Welcome to Memoria Vault');
+
+    expect(document.title).toBe('Memoria Vault');
+  });
+
   it('renders onboarding when there are no configured sources', async () => {
     getMemorySourcesMock.mockResolvedValue([]);
 
     render(<App />);
 
     expect(
-      await screen.findByText('Welcome to SnapMemoria'),
+      await screen.findByText('Welcome to Memoria Vault'),
     ).toBeInTheDocument();
-    expect(screen.getByText('Add your Snapchat export')).toBeInTheDocument();
+    expect(screen.getByText('Add exported archive')).toBeInTheDocument();
+    expect(screen.queryByText(/SnapMemoria/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/official Snapchat/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/affiliated with/i)).not.toBeInTheDocument();
   });
 
   it('does not show the archive as a broken empty state when no sources exist', async () => {
@@ -152,7 +165,7 @@ describe('App onboarding', () => {
     render(<App />);
 
     expect(
-      await screen.findByText('Welcome to SnapMemoria'),
+      await screen.findByText('Welcome to Memoria Vault'),
     ).toBeInTheDocument();
     expect(
       screen.queryByText('No Memories found for this period.'),
@@ -171,12 +184,29 @@ describe('App onboarding', () => {
     expect(screen.getByText('Nothing is uploaded.')).toBeInTheDocument();
   });
 
+  it('shows the independence disclaimer and descriptive compatibility wording', async () => {
+    getMemorySourcesMock.mockResolvedValue([]);
+
+    render(<App />);
+
+    expect(
+      await screen.findByText(
+        'This application is an independent, open-source local tool and is not affiliated, associated, authorized, endorsed by, or in any way officially connected with Snap Inc. or Snapchat.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Compatible Snapchat export formats may be read locally. Compatibility references are descriptive only.',
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('shows the folder structure example', async () => {
     getMemorySourcesMock.mockResolvedValue([]);
 
     render(<App />);
 
-    expect(await screen.findByText(/snapchat-memories\//)).toBeInTheDocument();
+    expect(await screen.findByText(/exported-archive\//)).toBeInTheDocument();
     expect(screen.getByText(/memories 2\//)).toBeInTheDocument();
     expect(screen.getByText(/memories 3\//)).toBeInTheDocument();
   });
@@ -194,7 +224,7 @@ describe('App onboarding', () => {
     render(<App />);
 
     await user.click(
-      await screen.findByRole('button', { name: 'Add your Snapchat export' }),
+      await screen.findByRole('button', { name: 'Add exported archive' }),
     );
 
     expect(
@@ -221,7 +251,7 @@ describe('App onboarding', () => {
     render(<App />);
 
     await user.click(
-      await screen.findByRole('button', { name: 'Add your Snapchat export' }),
+      await screen.findByRole('button', { name: 'Add exported archive' }),
     );
     await user.type(screen.getByLabelText('Source name'), 'Snapchat USB');
     await user.type(
@@ -232,11 +262,11 @@ describe('App onboarding', () => {
 
     await waitFor(() => {
       expect(
-        screen.queryByText('Welcome to SnapMemoria'),
+        screen.queryByText('Welcome to Memoria Vault'),
       ).not.toBeInTheDocument();
     });
     expect(startMemorySourceScanMock).toHaveBeenCalledWith(source.id);
-    expect(screen.getByText('Scanning Memories…')).toBeInTheDocument();
+    expect(screen.getByText('Scanning memories…')).toBeInTheDocument();
   });
 
   it('renders source loading errors safely', async () => {
@@ -306,9 +336,7 @@ describe('App video preview fallback', () => {
 
     render(<App />);
 
-    const thumbnail = await screen.findByAltText(
-      'Snapchat Memory from 2026-01-01',
-    );
+    const thumbnail = await screen.findByAltText('Memory from 2026-01-01');
     fireEvent.error(thumbnail);
 
     expect(screen.getByText('Video preview unavailable')).toBeInTheDocument();

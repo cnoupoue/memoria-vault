@@ -19,6 +19,7 @@ import { OnboardingPage } from './components/OnboardingPage';
 import { SettingsPage } from './components/SettingsPage';
 
 const PAGE_SIZE = 48;
+const APP_TITLE = 'Memoria Vault';
 
 const MONTH_NAMES = [
   'January',
@@ -85,6 +86,10 @@ function App() {
    * when the user changes year or month quickly.
    */
   const memoryRequestVersion = useRef(0);
+
+  useEffect(() => {
+    document.title = APP_TITLE;
+  }, []);
 
   const loadSources = useCallback(async () => {
     setIsLoadingSources(true);
@@ -294,7 +299,7 @@ function App() {
       setSelectedMemory(detail);
     } catch {
       setSelectedMemoryError(
-        'Could not open this Memory. The source drive may be unavailable.',
+        'Could not open this memory. The source drive may be unavailable.',
       );
     } finally {
       setIsLoadingSelectedMemory(false);
@@ -349,11 +354,11 @@ function App() {
     <main className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <span className="brand-mark">S</span>
+          <span className="brand-mark">M</span>
 
           <div>
-            <h1>SnapMemoria</h1>
-            <p>Your Snapchat archive</p>
+            <h1>Memoria Vault</h1>
+            <p>Your local archive</p>
           </div>
         </div>
 
@@ -414,7 +419,8 @@ function App() {
 
           {!isLoadingSources && !hasConfiguredSources && !sourceLoadError && (
             <p className="muted-text">
-              Add your Snapchat export to build your private archive.
+              Add an exported archive folder to build your private local
+              archive.
             </p>
           )}
 
@@ -488,7 +494,7 @@ function App() {
               <header className="content-header">
                 <div>
                   <p className="eyebrow">Setup</p>
-                  <h2>SnapMemoria setup</h2>
+                  <h2>Memoria Vault setup</h2>
                 </div>
               </header>
               <div className="error-banner">{sourceLoadError}</div>
@@ -541,7 +547,7 @@ function App() {
                       >
                         <div className="memory-preview">
                           <img
-                            alt={`Snapchat Memory from ${memory.capturedAt}`}
+                            alt={`Memory from ${memory.capturedAt}`}
                             className="memory-thumbnail"
                             loading="lazy"
                             onError={(event) => {
@@ -604,7 +610,7 @@ function App() {
                         onClick={() => void loadMoreMemories()}
                         type="button"
                       >
-                        {isLoadingMore ? 'Loading more Memories…' : 'Load more'}
+                        {isLoadingMore ? 'Loading more memories…' : 'Load more'}
                       </button>
                     </div>
                   )}

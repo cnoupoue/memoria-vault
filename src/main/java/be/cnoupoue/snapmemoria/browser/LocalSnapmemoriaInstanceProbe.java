@@ -14,8 +14,8 @@ public class LocalSnapmemoriaInstanceProbe {
   private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(2);
   private static final Pattern HEALTHY_STATUS_PATTERN =
       Pattern.compile("\"status\"\\s*:\\s*\"UP\"");
-  private static final Pattern SNAPMEMORIA_APP_NAME_PATTERN =
-      Pattern.compile("\"name\"\\s*:\\s*\"snapmemoria\"");
+  private static final Pattern MEMORIA_VAULT_APP_NAME_PATTERN =
+      Pattern.compile("\"name\"\\s*:\\s*\"memoria-vault\"");
 
   private final HttpClient httpClient;
 
@@ -33,7 +33,7 @@ public class LocalSnapmemoriaInstanceProbe {
         return InstanceProbeResult.UNRELATED_SERVICE;
       }
 
-      if (!hasSnapmemoriaIdentity(appUrl)) {
+      if (!hasMemoriaVaultIdentity(appUrl)) {
         return InstanceProbeResult.UNRELATED_SERVICE;
       }
 
@@ -58,14 +58,14 @@ public class LocalSnapmemoriaInstanceProbe {
     return HEALTHY_STATUS_PATTERN.matcher(response.body()).find();
   }
 
-  private boolean hasSnapmemoriaIdentity(URI appUrl) throws IOException, InterruptedException {
+  private boolean hasMemoriaVaultIdentity(URI appUrl) throws IOException, InterruptedException {
     HttpResponse<String> response = get(appUrl.resolve("/actuator/info"));
 
     if (!isSuccess(response)) {
       return false;
     }
 
-    return SNAPMEMORIA_APP_NAME_PATTERN.matcher(response.body()).find();
+    return MEMORIA_VAULT_APP_NAME_PATTERN.matcher(response.body()).find();
   }
 
   private HttpResponse<String> get(URI uri) throws IOException, InterruptedException {

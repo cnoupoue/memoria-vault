@@ -30,7 +30,7 @@ describe('MemoryViewer', () => {
 
     expect(
       screen.getByRole('img', {
-        name: 'Snapchat Memory from 2020-06-10',
+        name: 'Memory from 2020-06-10',
       }),
     ).toHaveAttribute('src', '/api/memories/memory-1/media');
   });

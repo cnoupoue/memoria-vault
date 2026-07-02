@@ -180,7 +180,7 @@ export function FlashbacksPage({ onOpenMemory }: FlashbacksPageProps) {
                 >
                   <div className="memory-preview">
                     <img
-                      alt={`Snapchat Memory from ${memory.capturedAt}`}
+                      alt={`Memory from ${memory.capturedAt}`}
                       className="memory-thumbnail"
                       loading="lazy"
                       onError={(event) => {

@@ -1,16 +1,16 @@
-# SnapMemoria
+# Memoria Vault
 
-> A local-first app for rediscovering exported Snapchat Memories.
+> A private local archive viewer for compatible exported memories.
 
-SnapMemoria helps you browse large Snapchat Memories exports without manually navigating thousands of files on a USB drive.
+Memoria Vault helps you browse compatible exported memories locally without manually navigating thousands of files on an external drive.
 
-It indexes your exported photos, videos, and Snapchat overlays locally, then provides a faster way to explore them by year, month, and flashback date.
+It indexes your exported photos, videos, and overlays locally, then provides a faster way to explore them by year, month, and flashback date.
 
 ## Features
 
 * Browse Memories by year and month
 * View photos and videos in a full-screen viewer
-* Display Snapchat overlays without modifying original files
+* Display supported overlays without modifying original files
 * Generate cached thumbnails for images and videos
 * Rediscover Memories through “On this day” flashbacks
 * Manage multiple export sources from the Settings page
@@ -20,13 +20,21 @@ It indexes your exported photos, videos, and Snapchat overlays locally, then pro
 
 ## Privacy first
 
-SnapMemoria is designed to be local-first.
+Memoria Vault is designed to be local-first.
 
-* Your original Snapchat files stay where they are.
+* Your original exported files stay where they are.
 * Your media is not uploaded to a cloud service.
-* Choosing a folder only gives SnapMemoria the local folder path; it does not upload, copy, move, or duplicate your media.
+* Choosing a folder only gives Memoria Vault the local folder path; it does not upload, copy, move, or duplicate your media.
 * The application runs on your computer by default.
 * Local paths, SQLite databases, thumbnails, and personal exports should never be committed to Git.
+
+## Independence disclaimer
+
+This application is an independent, open-source local tool and is not affiliated, associated, authorized, endorsed by, or in any way officially connected with Snap Inc. or Snapchat.
+
+Memoria Vault can read supported local export structures, including compatible Snapchat export formats. All compatibility references are descriptive only.
+
+Maintainer note: this rebrand reduces perceived affiliation risk, but it does not replace trademark clearance or legal advice. Public launch should include an independent trademark search for the final app name and legal review. Compatibility references must remain descriptive and non-prominent, and no Snap Inc. or Snapchat logos, branding, or visual identity should be used.
 
 ## Beta issue reports
 
@@ -55,7 +63,7 @@ Verify the installation:
 ffmpeg -version
 ```
 
-Video playback does not depend on FFmpeg. If FFmpeg is unavailable, SnapMemoria continues to browse and open original videos, but video preview thumbnails are shown with a fallback state. Development can use FFmpeg from the system `PATH` or an explicit `snapmemoria.ffmpeg.path` value.
+Video playback does not depend on FFmpeg. If FFmpeg is unavailable, Memoria Vault continues to browse and open original videos, but video preview thumbnails are shown with a fallback state. Development can use FFmpeg from the system `PATH` or an explicit `snapmemoria.ffmpeg.path` value.
 
 ### Clone and install
 
@@ -104,14 +112,14 @@ Check that the backend is running:
 make health
 ```
 
-### Add your Snapchat export
+### Add an exported archive
 
 1. Open **Settings** in the application.
-2. Click **Choose Snapchat export folder**.
-3. Select the parent folder containing your Snapchat export, such as:
+2. Click **Choose exported archive folder**.
+3. Select the parent folder containing your exported archive data, such as:
 
 ```text
-snapchat-memories/
+exported-archive/
 ├── memories/
 ├── memories 2/
 ├── memories 3/
@@ -121,13 +129,13 @@ snapchat-memories/
 4. Start a scan.
 5. Browse your archive through the timeline.
 
-Do not select an individual `memories` folder when your export contains multiple folders. Select the parent `snapchat-memories` folder instead.
+Do not select an individual `memories` folder when your export contains multiple folders. Select the parent exported archive folder instead. Compatible Snapchat export folder structures are supported descriptively.
 
-The folder picker is local to the machine running SnapMemoria. It indexes files in place and never uploads or copies your personal media. If native folder selection is unavailable, for example in a headless environment, enter the folder path manually in Settings.
+The folder picker is local to the machine running Memoria Vault. It indexes files in place and never uploads or copies your personal media. If native folder selection is unavailable, for example in a headless environment, enter the folder path manually in Settings.
 
 ## Local commands
 
-SnapMemoria provides a `Makefile` for common development tasks.
+Memoria Vault provides a `Makefile` for common development tasks.
 
 ```bash
 # Show every available command
@@ -208,7 +216,7 @@ Run it locally:
 make run-production
 ```
 
-Production mode embeds the compiled React frontend in the Spring Boot JAR, serves the app from `http://127.0.0.1:8080`, and does not require Vite or Node.js at runtime. `make run-production` starts SnapMemoria locally and opens the default browser automatically. If SnapMemoria is already running, the existing local app is opened instead.
+Production mode embeds the compiled React frontend in the Spring Boot JAR, serves the app from `http://127.0.0.1:8080`, and does not require Vite or Node.js at runtime. `make run-production` starts Memoria Vault locally and opens the default browser automatically. If Memoria Vault is already running, the existing local app is opened instead.
 
 This JAR is the foundation for future macOS packaging with `jpackage`.
 
@@ -223,8 +231,8 @@ make package-macos
 This creates:
 
 ```text
-dist/app/SnapMemoria.app
-dist/installers/SnapMemoria-<version>-macos-arm64.dmg
+dist/app/Memoria Vault.app
+dist/installers/Memoria-Vault-<version>-macos-arm64.dmg
 ```
 
 The package includes a bundled Java runtime, the production JAR with the React frontend embedded, and a verified macOS arm64 FFmpeg binary when present at `packaging/macos/ffmpeg/arm64/ffmpeg`. FFmpeg is used only for video thumbnail generation; original videos still open if preview generation is unavailable.
@@ -236,6 +244,8 @@ make check-bundled-ffmpeg
 ```
 
 The package is intended for macOS Apple Silicon, and it is unsigned and not notarized yet. macOS may show a security warning for unsigned local builds. Code signing and notarization are planned future release steps.
+
+The macOS package identifier is `be.cnoupoue.memoriavault`. Earlier local builds may have used the internal `be.cnoupoue.snapmemoria` identifier, so maintainers should treat upgrades from pre-release builds as a compatibility check before distribution.
 
 Format the complete project:
 
@@ -264,7 +274,7 @@ See [SECURITY.md](docs/SECURITY.md) for the security policy and reporting guidan
 
 ## Support the project
 
-SnapMemoria is built as an open-source project.
+Memoria Vault is built as an open-source project.
 
 If it helps you rediscover meaningful memories, consider supporting its development:
 
@@ -273,7 +283,7 @@ If it helps you rediscover meaningful memories, consider supporting its developm
 You can also support the project by:
 
 * Starring the repository
-* Sharing it with people who export Snapchat Memories
+* Sharing it with people who use compatible local archive exports
 * Opening an issue for bugs or ideas
 * Contributing code, tests, or documentation
 
@@ -292,4 +302,19 @@ Planned improvements include:
 
 ## License
 
-SnapMemoria is licensed under the [MIT License](LICENSE).
+Memoria Vault is licensed under the [MIT License](LICENSE).
+
+## Retained internal identifiers
+
+Some internal identifiers intentionally still use `snapmemoria` or related implementation names for compatibility and to avoid risky data migrations:
+
+* Java package names under `be.cnoupoue.snapmemoria`
+* Maven artifact ID `snapmemoria`
+* Spring configuration keys such as `snapmemoria.thumbnail.directory`
+* Environment variable aliases such as `SNAPMEMORIA_FFMPEG_PATH`
+* Existing SQLite data and cache directories under `~/.snapmemoria`
+* Existing database file name `snapmemoria.db`
+* Applied Flyway migration filenames and database schema history
+* Internal parser names and tests for compatible export file structures
+
+These are implementation details and should not appear in normal user-facing branding. Low-risk cleanup of internal names can be evaluated in a future migration plan after public naming is final.

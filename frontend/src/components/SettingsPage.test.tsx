@@ -120,7 +120,7 @@ describe('SettingsPage', () => {
 
     expect(
       await screen.findByRole('button', {
-        name: 'Choose Snapchat export folder',
+        name: 'Choose exported archive folder',
       }),
     ).toBeInTheDocument();
   });
@@ -139,7 +139,7 @@ describe('SettingsPage', () => {
 
     await user.click(
       await screen.findByRole('button', {
-        name: 'Choose Snapchat export folder',
+        name: 'Choose exported archive folder',
       }),
     );
 
@@ -165,7 +165,7 @@ describe('SettingsPage', () => {
 
     await user.type(await screen.findByLabelText('Source name'), 'My USB');
     await user.click(
-      screen.getByRole('button', { name: 'Choose Snapchat export folder' }),
+      screen.getByRole('button', { name: 'Choose exported archive folder' }),
     );
 
     expect(screen.getByLabelText('Source name')).toHaveValue('My USB');
@@ -192,7 +192,7 @@ describe('SettingsPage', () => {
       '/Volumes/manual/snapchat-memories',
     );
     await user.click(
-      screen.getByRole('button', { name: 'Choose Snapchat export folder' }),
+      screen.getByRole('button', { name: 'Choose exported archive folder' }),
     );
 
     expect(screen.getByLabelText('Source name')).toHaveValue('Manual name');
@@ -220,7 +220,7 @@ describe('SettingsPage', () => {
 
     await user.click(
       await screen.findByRole('button', {
-        name: 'Choose Snapchat export folder',
+        name: 'Choose exported archive folder',
       }),
     );
 
@@ -262,7 +262,7 @@ describe('SettingsPage', () => {
 
     render(<SettingsPage onSourceScanned={vi.fn()} />);
 
-    expect(await screen.findByText('SnapMemoria 0.1.0')).toBeInTheDocument();
+    expect(await screen.findByText('Memoria Vault 0.1.0')).toBeInTheDocument();
     expect(screen.getAllByText('Ready')).toHaveLength(2);
     expect(screen.getByText('Using bundled FFmpeg')).toBeInTheDocument();
     expect(screen.getByText('Sources: 1 configured')).toBeInTheDocument();
@@ -281,6 +281,37 @@ describe('SettingsPage', () => {
     render(<SettingsPage onSourceScanned={vi.fn()} />);
 
     expect(await screen.findByText('Using bundled FFmpeg')).toBeInTheDocument();
+  });
+
+  it('shows the independence disclaimer in Settings', async () => {
+    getMemorySourcesMock.mockResolvedValue([]);
+
+    render(<SettingsPage onSourceScanned={vi.fn()} />);
+
+    expect(
+      await screen.findByText(
+        'This application is an independent, open-source local tool and is not affiliated, associated, authorized, endorsed by, or in any way officially connected with Snap Inc. or Snapchat.',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Compatible Snapchat export formats may be read locally. Compatibility references are descriptive only.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/SnapMemoria/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/official Snapchat/i)).not.toBeInTheDocument();
+  });
+
+  it('uses neutral wording for the primary source selection action', async () => {
+    getMemorySourcesMock.mockResolvedValue([]);
+
+    render(<SettingsPage onSourceScanned={vi.fn()} />);
+
+    expect(
+      await screen.findByRole('button', {
+        name: 'Choose exported archive folder',
+      }),
+    ).toBeInTheDocument();
   });
 
   it('shows safe unavailable video preview diagnostics', async () => {
@@ -334,7 +365,7 @@ describe('SettingsPage', () => {
       }),
     );
 
-    expect(writeText).toHaveBeenCalledWith(`SnapMemoria diagnostics
+    expect(writeText).toHaveBeenCalledWith(`Memoria Vault diagnostics
 
 App version: 0.1.0
 Video previews: Ready
@@ -504,7 +535,7 @@ Local database: Ready`);
     await waitFor(() => {
       expect(startMemorySourceScanMock).toHaveBeenCalledWith(source.id);
     });
-    expect(screen.getByText('Scanning Memories…')).toBeInTheDocument();
+    expect(screen.getByText('Scanning memories…')).toBeInTheDocument();
   });
 
   it('removes a deleted source from the UI and notifies the parent', async () => {

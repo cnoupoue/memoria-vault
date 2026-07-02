@@ -80,7 +80,7 @@ export function MemoryViewer({
                 </div>
               ) : memory.mediaType === 'IMAGE' ? (
                 <img
-                  alt={`Snapchat Memory from ${memory.capturedAt}`}
+                  alt={`Memory from ${memory.capturedAt}`}
                   className="memory-viewer-image"
                   onError={() => {
                     setMediaErrorMemoryId(memory.id);
