@@ -22,9 +22,13 @@
     "build": "npm run build:backend && npm run build:frontend",
     "build:backend": "./mvnw -DskipTests package",
     "build:frontend": "npm --prefix frontend run build",
+    "build:production": "make build-production",
+    "package:jar": "make package-jar",
+    "run:production": "make run-production",
 
     "fix": "npm run lint:fix && npm run format",
     "verify": "npm run format:check && npm run lint && npm run test && npm run build",
+    "verify:production": "make verify-production",
 
     "prepare": "husky"
   },

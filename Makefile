@@ -1,14 +1,21 @@
 .DEFAULT_GOAL := help
 
+APP_NAME ?= snapmemoria
+APP_VERSION ?= $(shell sed -n '/<artifactId>snapmemoria<\/artifactId>/,/<\/version>/ s:.*<version>\(.*\)</version>.*:\1:p' pom.xml | head -n 1)
+JAR_PATH ?= target/$(APP_NAME)-$(APP_VERSION).jar
+SPRING_PROFILE ?= production
+
 .PHONY: help install dev run-backend run-frontend \
 	format format-backend format-frontend \
 	format-check format-check-backend format-check-frontend \
 	lint lint-fix test test-backend test-frontend \
-	build build-backend build-frontend verify clean health
+	build build-backend build-frontend build-production package-jar \
+	run-production verify-production inspect-jar verify clean health
 
 help: ## Show available commands
 	@echo ""
 	@echo "SnapMemoria local commands"
+	@echo "Production JAR: $(JAR_PATH)"
 	@echo ""
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@echo ""
@@ -74,7 +81,7 @@ test-backend: ## Run Spring Boot tests
 test-frontend: ## Run React and TypeScript tests
 	npm --prefix frontend run test
 
-build: ## Build backend and frontend production artifacts
+build: ## Build separate development artifacts; use build-production for the standalone JAR
 	$(MAKE) build-backend
 	$(MAKE) build-frontend
 
@@ -83,6 +90,27 @@ build-backend: ## Build the Spring Boot JAR without rerunning tests
 
 build-frontend: ## Build the frontend production bundle
 	npm --prefix frontend run build
+
+build-production: ## Build the standalone production JAR with the React frontend embedded
+	./mvnw -P$(SPRING_PROFILE) -DskipTests package
+
+package-jar: build-production ## Alias for creating the final executable production JAR
+
+run-production: package-jar ## Build if needed, then run the packaged production JAR
+	java -jar $(JAR_PATH) --spring.profiles.active=$(SPRING_PROFILE)
+
+verify-production: ## Run checks, then build and inspect the production JAR
+	$(MAKE) format-check
+	$(MAKE) lint
+	$(MAKE) test
+	$(MAKE) package-jar
+	$(MAKE) inspect-jar
+
+inspect-jar: ## Verify the production JAR contains the compiled React entrypoint and favicon
+	@test -f "$(JAR_PATH)" || { echo "Missing JAR: $(JAR_PATH). Run 'make package-jar' first."; exit 1; }
+	@jar tf "$(JAR_PATH)" | grep -qx 'BOOT-INF/classes/static/index.html'
+	@jar tf "$(JAR_PATH)" | grep -qx 'BOOT-INF/classes/static/favicon.png'
+	@echo "Production JAR contains embedded React assets."
 
 verify: ## Run all formatting checks, linting, tests, and builds
 	$(MAKE) format-check

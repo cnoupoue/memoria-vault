@@ -154,8 +154,14 @@ make lint-fix
 # Run backend and frontend tests
 make test
 
-# Build backend and frontend production artifacts
+# Build separate backend and frontend development artifacts
 make build
+
+# Build the standalone production JAR
+make build-production
+
+# Run the standalone production JAR
+make run-production
 
 # Run all formatting checks, linting, tests, and builds
 make verify
@@ -181,6 +187,22 @@ This validates:
 * Frontend tests
 * Backend build
 * Frontend production build
+
+## Production build
+
+Build the standalone production JAR:
+
+```bash
+make build-production
+```
+
+Run it locally:
+
+```bash
+make run-production
+```
+
+Production mode embeds the compiled React frontend in the Spring Boot JAR, serves the app from `http://127.0.0.1:8080`, and does not require Vite or Node.js at runtime. This JAR is the foundation for future macOS packaging with `jpackage`.
 
 Format the complete project:
 
