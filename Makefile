@@ -96,7 +96,10 @@ build-production: ## Build the standalone production JAR with the React frontend
 
 package-jar: build-production ## Alias for creating the final executable production JAR
 
-run-production: package-jar ## Build if needed, then run the packaged production JAR
+$(JAR_PATH):
+	$(MAKE) package-jar
+
+run-production: $(JAR_PATH) ## Build if missing, then run the packaged production JAR
 	java -jar $(JAR_PATH) --spring.profiles.active=$(SPRING_PROFILE)
 
 verify-production: ## Run checks, then build and inspect the production JAR

@@ -202,7 +202,9 @@ Run it locally:
 make run-production
 ```
 
-Production mode embeds the compiled React frontend in the Spring Boot JAR, serves the app from `http://127.0.0.1:8080`, and does not require Vite or Node.js at runtime. This JAR is the foundation for future macOS packaging with `jpackage`.
+Production mode embeds the compiled React frontend in the Spring Boot JAR, serves the app from `http://127.0.0.1:8080`, and does not require Vite or Node.js at runtime. `make run-production` starts SnapMemoria locally and opens the default browser automatically. If SnapMemoria is already running, the existing local app is opened instead.
+
+This JAR is the foundation for future macOS packaging with `jpackage`.
 
 Format the complete project:
 
