@@ -1,17 +1,19 @@
-name: CI
+name: Quality Checks
 
 on:
   pull_request:
   push:
     branches:
       - main
+    tags-ignore:
+      - "v*.*.*"
 
 permissions:
   contents: read
 
 jobs:
   quality:
-    name: Quality checks
+    name: Verify code quality
     runs-on: ubuntu-latest
 
     env:

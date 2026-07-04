@@ -251,6 +251,23 @@ make check-bundled-ffmpeg
 
 The package is intended for macOS Apple Silicon, and it is unsigned and not notarized yet. macOS may show a security warning for unsigned local builds. Code signing and notarization are planned future release steps.
 
+Before future notarization work, inspect every embedded Mach-O binary in the app bundle:
+
+```bash
+make package-macos-app
+make inspect-macos-signing-readiness
+```
+
+Inspection mode lists the jpackage launcher, bundled FFmpeg, Java runtime binaries, native libraries, frameworks, dynamic dependencies, and current signature status. It exits successfully for unsigned development builds while clearly warning about binaries that still need signing.
+
+Strict release verification is separate:
+
+```bash
+make verify-macos-signatures
+```
+
+`verify-macos-signatures` is intended for signed Developer ID builds and is expected to fail until signing is implemented. It rejects unsigned or invalid nested binaries, unsafe Homebrew or user-local dynamic dependencies, and verifies the final `.app` bundle with strict deep code-signature verification.
+
 The macOS package identifier is `be.cnoupoue.memoriavault`. Maintainers should treat upgrades from pre-release builds as a compatibility check before distribution.
 
 ## Creating a macOS release
@@ -278,6 +295,17 @@ The release workflow requires:
 * Java 21 and Node.js 22 dependency installation through the lockfiles.
 
 The package is Apple Silicon only. Signing and notarization are not included yet, so macOS may show a security warning.
+
+Future signing checklist:
+
+1. Build the app.
+2. Sign every nested executable and native library.
+3. Sign FFmpeg.
+4. Sign the final app bundle.
+5. Run `verify-macos-signatures`.
+6. Build/sign the DMG.
+7. Submit the DMG to Apple notarization.
+8. Staple and validate the notarization ticket.
 
 To publish with the optional helper instead of typing the push command directly:
 

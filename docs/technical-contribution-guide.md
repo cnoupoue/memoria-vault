@@ -282,6 +282,31 @@ packaging/
 └── linux/
 ```
 
+macOS app images contain more than the top-level `.app` bundle. The jpackage launcher, bundled Java
+runtime, bundled FFmpeg, and any native Java libraries or frameworks are separate Mach-O binaries
+that must be identified and signed individually before the final app bundle is signed.
+
+Use inspection mode during unsigned development:
+
+```bash
+make inspect-macos-signing-readiness
+```
+
+This command requires `dist/app/Memoria Vault.app`, lists embedded Mach-O binaries, reports current
+signature status, validates bundled FFmpeg, and warns about unsafe dynamic dependencies such as
+Homebrew, user-local, temporary, or mounted-volume paths. Unsigned binaries are warnings in this mode.
+
+Use strict mode only for signed release candidates:
+
+```bash
+make verify-macos-signatures
+```
+
+Strict mode fails on unsigned or invalid nested signatures, unsafe dynamic dependencies, and final
+`.app` bundle verification failures. It is expected to fail until Developer ID Application signing is
+implemented. If `APPLE_DEVELOPER_ID_APPLICATION` is set, the inspection also checks signed binaries
+against the expected Team Identifier or signing authority where macOS exposes that metadata.
+
 To add Windows support:
 
 1. Add `WindowsPlatformService`.

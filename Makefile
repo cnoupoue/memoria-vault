@@ -38,6 +38,7 @@ BUNDLED_FFMPEG_APP_PATH ?= $(MACOS_APP_PATH)/Contents/app/$(BUNDLED_FFMPEG_APP_D
 	package-windows package-linux \
 	inspect-macos-app clean-packaging generate-macos-icon prepare-macos-input \
 	check-bundled-ffmpeg prepare-bundled-ffmpeg inspect-bundled-ffmpeg \
+	inspect-macos-signing-readiness verify-macos-signatures test-macos-signing-readiness \
 	check-macos check-macos-arm64 check-jpackage check-icon-tools \
 	check-production-jar tag push-tag verify clean health
 
@@ -266,6 +267,15 @@ inspect-bundled-ffmpeg: inspect-macos-app ## Verify the generated macOS app cont
 	@"$(BUNDLED_FFMPEG_APP_PATH)" -version >/dev/null || { echo "Bundled app FFmpeg failed validation: $(BUNDLED_FFMPEG_APP_PATH) -version"; exit 1; }
 	@otool -L "$(BUNDLED_FFMPEG_APP_PATH)" | grep -Eq '/(opt/homebrew|usr/local)/(Cellar|opt)/' && { echo "Bundled app FFmpeg must not depend on Homebrew dynamic libraries."; exit 1; } || true
 	@echo "macOS app contains executable bundled FFmpeg."
+
+inspect-macos-signing-readiness: check-macos ## List every Mach-O binary in the app bundle and report signing readiness without requiring signatures
+	@packaging/macos/scripts/inspect-signing-readiness.sh inspect "$(MACOS_APP_PATH)"
+
+verify-macos-signatures: check-macos ## Strict release-only verification; expected to fail until Developer ID signing is implemented
+	@packaging/macos/scripts/inspect-signing-readiness.sh verify "$(MACOS_APP_PATH)"
+
+test-macos-signing-readiness: ## Run shell tests for macOS signing-readiness inspection behavior
+	@packaging/macos/scripts/test-signing-readiness.sh
 
 clean-packaging: ## Remove generated packaging artifacts only
 	rm -rf "$(DIST_DIR)"
