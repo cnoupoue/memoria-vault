@@ -136,3 +136,17 @@ export type Diagnostics = {
   sources: SourceDiagnostics;
   database: DatabaseDiagnostics;
 };
+
+export type CompatibilityPlaybackStatus =
+  'AVAILABLE' | 'GENERATED' | 'UNAVAILABLE' | 'FAILED';
+
+export type CompatibilityPlayback = {
+  status: CompatibilityPlaybackStatus;
+  mediaUrl: string | null;
+  message: string;
+};
+
+export type OriginalFileOpen = {
+  opened: boolean;
+  message: string;
+};

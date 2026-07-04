@@ -7,6 +7,8 @@ import type {
   MemoryPage,
   MemorySource,
   MemoryScanJob,
+  CompatibilityPlayback,
+  OriginalFileOpen,
   SourceAvailability,
   TimelineMonth,
   TimelineYear,
@@ -96,6 +98,23 @@ export function getMemories(
 
 export function getMemoryDetail(memoryId: string): Promise<MemoryDetail> {
   return request<MemoryDetail>(`/api/memories/${memoryId}`);
+}
+
+export function prepareCompatibilityPlayback(
+  memoryId: string,
+): Promise<CompatibilityPlayback> {
+  return request<CompatibilityPlayback>(
+    `/api/memories/${memoryId}/playback/compatible`,
+    {
+      method: 'POST',
+    },
+  );
+}
+
+export function openOriginalFile(memoryId: string): Promise<OriginalFileOpen> {
+  return request<OriginalFileOpen>(`/api/memories/${memoryId}/open-original`, {
+    method: 'POST',
+  });
 }
 
 export function getTodayFlashbacks(): Promise<FlashbackResponse> {

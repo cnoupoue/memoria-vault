@@ -23,6 +23,7 @@ import type {
   Diagnostics,
   SourceAvailabilityStatus,
 } from '../api/types';
+import { readLastPlaybackDiagnostic } from '../videoPlaybackDiagnostics';
 
 const INDEPENDENCE_DISCLAIMER =
   'This application is an independent, open-source local tool and is not affiliated, associated, authorized, endorsed by, or in any way officially connected with Snap Inc. or Snapchat.';
@@ -151,7 +152,38 @@ function buildDiagnosticReport(diagnostics: Diagnostics): string {
     `Local database: ${formatDatabaseStatus(diagnostics.database.status)}`,
   );
 
+  const playbackDiagnostic = readLastPlaybackDiagnostic();
+
+  if (playbackDiagnostic) {
+    lines.push(
+      `Last video playback result: ${playbackDiagnostic.result}`,
+      `Direct playback: ${playbackDiagnostic.directPlayback}`,
+      `Playback failure category: ${playbackDiagnostic.category}`,
+      `HTTP stream status: ${playbackDiagnostic.httpStatus ?? 'Unknown'}`,
+      `Range requests supported: ${formatDiagnosticBoolean(
+        playbackDiagnostic.rangeRequestsSupported,
+      )}`,
+      `Video MIME type: ${playbackDiagnostic.mimeType ?? 'Unknown'}`,
+      `Browser media error code: ${
+        playbackDiagnostic.videoErrorCode ?? 'Unknown'
+      }`,
+      `Fallback playback: ${playbackDiagnostic.fallbackPlayback}`,
+      `Browser media network state: ${playbackDiagnostic.networkState ?? 'Unknown'}`,
+      `Browser media ready state: ${playbackDiagnostic.readyState ?? 'Unknown'}`,
+      `Media URL category: ${playbackDiagnostic.currentSrcCategory}`,
+      `Browser category: ${playbackDiagnostic.userAgentCategory}`,
+    );
+  }
+
   return lines.join('\n');
+}
+
+function formatDiagnosticBoolean(value: boolean | null): string {
+  if (value === null) {
+    return 'Unknown';
+  }
+
+  return value ? 'Yes' : 'No';
 }
 
 type SettingsPageProps = {

@@ -25,6 +25,7 @@ public class ApplicationDataDirectoryResolver {
           legacyRoot,
           legacyRoot.resolve("data").resolve(LEGACY_DATABASE_FILE_NAME),
           legacyRoot.resolve("cache").resolve("thumbnails"),
+          legacyRoot.resolve("cache").resolve("playback"),
           true);
     }
 
@@ -32,9 +33,14 @@ public class ApplicationDataDirectoryResolver {
         canonicalRoot,
         canonicalRoot.resolve("data").resolve(CANONICAL_DATABASE_FILE_NAME),
         canonicalRoot.resolve("cache").resolve("thumbnails"),
+        canonicalRoot.resolve("cache").resolve("playback"),
         false);
   }
 
   public record ApplicationDataDirectories(
-      Path root, Path databasePath, Path thumbnailDirectory, boolean usingLegacyDirectory) {}
+      Path root,
+      Path databasePath,
+      Path thumbnailDirectory,
+      Path playbackDirectory,
+      boolean usingLegacyDirectory) {}
 }

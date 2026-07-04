@@ -7,9 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Optional;
-import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
-import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class SecureMemoryPathResolver {
@@ -20,46 +18,50 @@ public class SecureMemoryPathResolver {
     this.memorySourceRepository = memorySourceRepository;
   }
 
-  public Path resolve(String sourceId, String storedMediaPath, String unavailableMessage) {
+  public Path resolve(String sourceId, String storedMediaPath) {
     MemorySource source =
         memorySourceRepository
             .findById(sourceId)
             .orElseThrow(
                 () ->
-                    new ResponseStatusException(HttpStatus.NOT_FOUND, "Memory source not found."));
+                    new MediaStreamingException(MediaStreamingFailureCategory.SOURCE_UNAVAILABLE));
+
+    Path sourceRootPath;
 
     try {
-      Path sourceRootPath = Path.of(source.getRootPath()).toRealPath();
-      Path storedPath = Path.of(storedMediaPath);
-
-      Optional<Path> rebasedPath = resolveRebasedPath(storedPath, sourceRootPath);
-
-      if (rebasedPath.isPresent()) {
-        return rebasedPath.get();
-      }
-
-      Optional<Path> directPath = resolveDirectPath(storedPath, sourceRootPath);
-
-      if (directPath.isPresent()) {
-        return directPath.get();
-      }
-    } catch (ResponseStatusException exception) {
-      throw exception;
+      sourceRootPath = Path.of(source.getRootPath()).toRealPath();
     } catch (IOException exception) {
-      throw new ResponseStatusException(HttpStatus.NOT_FOUND, unavailableMessage);
+      throw new MediaStreamingException(
+          MediaStreamingFailureCategory.SOURCE_UNAVAILABLE, exception);
     }
 
-    throw new ResponseStatusException(HttpStatus.NOT_FOUND, unavailableMessage);
+    Path storedPath = Path.of(storedMediaPath);
+
+    Optional<Path> rebasedPath = resolveRebasedPath(storedPath, sourceRootPath);
+
+    if (rebasedPath.isPresent()) {
+      return rebasedPath.get();
+    }
+
+    Optional<Path> directPath = resolveDirectPath(storedPath, sourceRootPath);
+
+    if (directPath.isPresent()) {
+      return directPath.get();
+    }
+
+    throw new MediaStreamingException(MediaStreamingFailureCategory.MEDIA_FILE_MISSING);
   }
 
-  private Optional<Path> resolveDirectPath(Path storedPath, Path sourceRootPath)
-      throws IOException {
+  public Path resolve(String sourceId, String storedMediaPath, String unavailableMessage) {
+    return resolve(sourceId, storedMediaPath);
+  }
+
+  private Optional<Path> resolveDirectPath(Path storedPath, Path sourceRootPath) {
     try {
       Path mediaPath = storedPath.toRealPath();
 
       if (!mediaPath.startsWith(sourceRootPath)) {
-        throw new ResponseStatusException(
-            HttpStatus.FORBIDDEN, "The requested file is outside the configured memory source.");
+        throw new MediaStreamingException(MediaStreamingFailureCategory.MEDIA_PATH_REJECTED);
       }
 
       return readableRegularFile(mediaPath);
@@ -68,8 +70,7 @@ public class SecureMemoryPathResolver {
     }
   }
 
-  private Optional<Path> resolveRebasedPath(Path storedPath, Path sourceRootPath)
-      throws IOException {
+  private Optional<Path> resolveRebasedPath(Path storedPath, Path sourceRootPath) {
     Optional<Path> relativePath = toSnapchatExportRelativePath(storedPath);
 
     if (relativePath.isEmpty() && !storedPath.isAbsolute()) {
@@ -89,8 +90,7 @@ public class SecureMemoryPathResolver {
     }
 
     if (!mediaPath.startsWith(sourceRootPath)) {
-      throw new ResponseStatusException(
-          HttpStatus.FORBIDDEN, "The requested file is outside the configured memory source.");
+      throw new MediaStreamingException(MediaStreamingFailureCategory.MEDIA_PATH_REJECTED);
     }
 
     return readableRegularFile(mediaPath);

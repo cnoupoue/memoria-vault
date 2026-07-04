@@ -1,5 +1,6 @@
 package be.cnoupoue.memoriavault.web;
 
+import be.cnoupoue.memoriavault.streaming.MediaStreamingException;
 import be.cnoupoue.memoriavault.thumbnail.ThumbnailUnavailableException;
 import java.time.Instant;
 import org.springframework.http.HttpStatus;
@@ -14,6 +15,13 @@ public class ApiExceptionHandler {
   @ExceptionHandler(ApiException.class)
   public ResponseEntity<ApiErrorResponse> handleApiException(ApiException exception) {
     return buildResponse(exception.getStatus(), exception.getCode(), exception.getMessage());
+  }
+
+  @ExceptionHandler(MediaStreamingException.class)
+  public ResponseEntity<ApiErrorResponse> handleMediaStreamingException(
+      MediaStreamingException exception) {
+    return buildResponse(
+        exception.getStatus(), exception.getCode(), exception.getMessage(), exception.getHeaders());
   }
 
   @ExceptionHandler(ResponseStatusException.class)
@@ -45,7 +53,16 @@ public class ApiExceptionHandler {
 
   private ResponseEntity<ApiErrorResponse> buildResponse(
       HttpStatus status, String code, String message) {
+    return buildResponse(status, code, message, new org.springframework.http.HttpHeaders());
+  }
+
+  private ResponseEntity<ApiErrorResponse> buildResponse(
+      HttpStatus status,
+      String code,
+      String message,
+      org.springframework.http.HttpHeaders headers) {
     return ResponseEntity.status(status)
+        .headers(headers)
         .body(new ApiErrorResponse(status.value(), code, message, Instant.now().toString()));
   }
 }

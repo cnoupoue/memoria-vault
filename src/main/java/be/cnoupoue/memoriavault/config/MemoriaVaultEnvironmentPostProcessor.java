@@ -25,6 +25,7 @@ public class MemoriaVaultEnvironmentPostProcessor implements EnvironmentPostProc
           Map.entry("memoriavault.browser.url", "snapmemoria.browser.url"),
           Map.entry("memoriavault.ffmpeg.path", "snapmemoria.ffmpeg.path"),
           Map.entry("memoriavault.thumbnail.directory", "snapmemoria.thumbnail.directory"),
+          Map.entry("memoriavault.playback.directory", "snapmemoria.playback.directory"),
           Map.entry("memoriavault.thumbnail.max-width", "snapmemoria.thumbnail.max-width"),
           Map.entry("memoriavault.thumbnail.max-height", "snapmemoria.thumbnail.max-height"),
           Map.entry(
@@ -107,6 +108,11 @@ public class MemoriaVaultEnvironmentPostProcessor implements EnvironmentPostProc
         environment,
         "memoriavault.thumbnail.directory",
         directories.thumbnailDirectory().toString());
+    putDefaultIfMissing(
+        overrides,
+        environment,
+        "memoriavault.playback.directory",
+        directories.playbackDirectory().toString());
 
     if (directories.usingLegacyDirectory()) {
       LOGGER.warn(
@@ -125,6 +131,7 @@ public class MemoriaVaultEnvironmentPostProcessor implements EnvironmentPostProc
         root,
         root.resolve("data").resolve(ApplicationDataDirectoryResolver.CANONICAL_DATABASE_FILE_NAME),
         root.resolve("cache").resolve("thumbnails"),
+        root.resolve("cache").resolve("playback"),
         false);
   }
 
@@ -133,6 +140,7 @@ public class MemoriaVaultEnvironmentPostProcessor implements EnvironmentPostProc
     try {
       Files.createDirectories(directories.databasePath().getParent());
       Files.createDirectories(directories.thumbnailDirectory());
+      Files.createDirectories(directories.playbackDirectory());
     } catch (IOException exception) {
       throw new IllegalStateException(
           "Unable to prepare Memoria Vault local data directories.", exception);

@@ -16,7 +16,6 @@ import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.HttpStatus;
-import org.springframework.web.server.ResponseStatusException;
 
 @ExtendWith(MockitoExtension.class)
 class SecureMemoryPathResolverTest {
@@ -63,11 +62,15 @@ class SecureMemoryPathResolverTest {
                     "source-1",
                     sourceRoot.resolve("..").resolve(outside.getFileName()).toString(),
                     "Unavailable."))
-        .isInstanceOf(ResponseStatusException.class)
+        .isInstanceOf(MediaStreamingException.class)
         .satisfies(
             exception ->
-                assertThat(((ResponseStatusException) exception).getStatusCode())
-                    .isEqualTo(HttpStatus.FORBIDDEN));
+                assertThat(((MediaStreamingException) exception).getStatus())
+                    .isEqualTo(HttpStatus.FORBIDDEN))
+        .satisfies(
+            exception ->
+                assertThat(((MediaStreamingException) exception).getCode())
+                    .isEqualTo("MEDIA_PATH_REJECTED"));
   }
 
   @Test
@@ -77,11 +80,15 @@ class SecureMemoryPathResolverTest {
     when(memorySourceRepository.findById("missing")).thenReturn(Optional.empty());
 
     assertThatThrownBy(() -> resolver.resolve("missing", "memories/file.jpg", "Unavailable."))
-        .isInstanceOf(ResponseStatusException.class)
+        .isInstanceOf(MediaStreamingException.class)
         .satisfies(
             exception ->
-                assertThat(((ResponseStatusException) exception).getStatusCode())
-                    .isEqualTo(HttpStatus.NOT_FOUND));
+                assertThat(((MediaStreamingException) exception).getStatus())
+                    .isEqualTo(HttpStatus.NOT_FOUND))
+        .satisfies(
+            exception ->
+                assertThat(((MediaStreamingException) exception).getCode())
+                    .isEqualTo("SOURCE_UNAVAILABLE"));
   }
 
   private SecureMemoryPathResolver resolverFor(MemorySource source) {

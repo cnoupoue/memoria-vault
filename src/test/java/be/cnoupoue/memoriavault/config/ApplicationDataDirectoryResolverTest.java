@@ -21,6 +21,8 @@ class ApplicationDataDirectoryResolverTest {
         .isEqualTo(userHome.resolve(".memoria-vault/data/memoriavault.db"));
     assertThat(directories.thumbnailDirectory())
         .isEqualTo(userHome.resolve(".memoria-vault/cache/thumbnails"));
+    assertThat(directories.playbackDirectory())
+        .isEqualTo(userHome.resolve(".memoria-vault/cache/playback"));
     assertThat(directories.usingLegacyDirectory()).isFalse();
   }
 
@@ -38,6 +40,8 @@ class ApplicationDataDirectoryResolverTest {
         .isEqualTo(userHome.resolve(".snapmemoria/data/snapmemoria.db"));
     assertThat(directories.thumbnailDirectory())
         .isEqualTo(userHome.resolve(".snapmemoria/cache/thumbnails"));
+    assertThat(directories.playbackDirectory())
+        .isEqualTo(userHome.resolve(".snapmemoria/cache/playback"));
     assertThat(directories.usingLegacyDirectory()).isTrue();
     assertThat(Files.readString(userHome.resolve(".snapmemoria/data/snapmemoria.db")))
         .isEqualTo("existing db");

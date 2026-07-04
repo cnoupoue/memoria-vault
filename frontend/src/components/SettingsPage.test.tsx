@@ -2,6 +2,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Diagnostics, MemorySource } from '../api/types';
+import { saveLastPlaybackDiagnostic } from '../videoPlaybackDiagnostics';
 import { SettingsPage } from './SettingsPage';
 
 vi.mock('../api/memoriaVaultApi', () => ({
@@ -70,6 +71,7 @@ afterEach(() => {
   });
   vi.restoreAllMocks();
   vi.clearAllMocks();
+  window.localStorage.clear();
 });
 
 function buildSource(source: Partial<MemorySource>): MemorySource {
@@ -428,6 +430,56 @@ Local database: Ready`);
     expect(copiedReport).not.toContain('Snapchat USB');
     expect(copiedReport).not.toContain('/Volumes/SNAP');
     expect(copiedReport).not.toContain('snapchat-memories');
+  });
+
+  it('copies sanitized last video playback diagnostics without media URLs', async () => {
+    const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    getMemorySourcesMock.mockResolvedValue([]);
+    saveLastPlaybackDiagnostic({
+      result: 'Failed',
+      directPlayback: 'Failed',
+      fallbackPlayback: 'Unavailable',
+      category: 'VIDEO_FORMAT_UNSUPPORTED',
+      httpStatus: 206,
+      rangeRequestsSupported: true,
+      mimeType: 'video/mp4',
+      videoErrorCode: 4,
+      videoErrorMessage: 'Unsupported format',
+      networkState: 3,
+      readyState: 0,
+      currentSrcCategory: 'local-memory-media-endpoint',
+      userAgentCategory: 'Safari',
+    });
+
+    render(<SettingsPage onSourceScanned={vi.fn()} />);
+
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Copy diagnostic information',
+      }),
+    );
+
+    const copiedReport = writeText.mock.calls[0][0] as string;
+
+    expect(copiedReport).toContain('Last video playback result: Failed');
+    expect(copiedReport).toContain('Direct playback: Failed');
+    expect(copiedReport).toContain(
+      'Playback failure category: VIDEO_FORMAT_UNSUPPORTED',
+    );
+    expect(copiedReport).toContain('HTTP stream status: 206');
+    expect(copiedReport).toContain('Range requests supported: Yes');
+    expect(copiedReport).toContain('Video MIME type: video/mp4');
+    expect(copiedReport).toContain('Browser media error code: 4');
+    expect(copiedReport).toContain('Fallback playback: Unavailable');
+    expect(copiedReport).not.toContain('/api/memories');
+    expect(copiedReport).not.toContain('memory-video');
+    expect(copiedReport).not.toContain('/Users/cameron');
   });
 
   it('renders unavailable source status', async () => {
