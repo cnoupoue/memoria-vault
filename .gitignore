@@ -49,7 +49,8 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 
-# Local SnapMemoria application data
+# Local Memoria Vault application data
+.memoria-vault/
 .snapmemoria/
 data/
 cache/

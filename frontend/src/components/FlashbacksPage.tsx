@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
-import { getFlashbacksByDate, getTodayFlashbacks } from '../api/snapmemoriaApi';
+import {
+  getFlashbacksByDate,
+  getTodayFlashbacks,
+} from '../api/memoriaVaultApi';
 import type { FlashbackMemory, FlashbackResponse } from '../api/types';
 import { MemoryCard } from './MemoryCard';
 

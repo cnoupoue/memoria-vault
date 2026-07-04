@@ -6,7 +6,7 @@ import {
   getMemorySources,
   getTimelineMonths,
   getTimelineYears,
-} from './api/snapmemoriaApi';
+} from './api/memoriaVaultApi';
 import type {
   Memory,
   MemoryDetail,
@@ -596,7 +596,7 @@ function App() {
 
           <nav aria-label="Project links" className="site-footer-links">
             <a
-              href="https://github.com/cnoupoue/snapmemoria"
+              href="https://github.com/cnoupoue/memoriavault"
               rel="noreferrer"
               target="_blank"
             >

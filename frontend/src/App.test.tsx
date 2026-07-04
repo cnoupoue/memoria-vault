@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MemorySource } from './api/types';
 import App from './App';
 
-vi.mock('./api/snapmemoriaApi', () => ({
+vi.mock('./api/memoriaVaultApi', () => ({
   createMemorySource: vi.fn(),
   deleteMemorySource: vi.fn(),
   getFlashbacksByDate: vi.fn(),
@@ -26,7 +26,7 @@ vi.mock('./api/snapmemoriaApi', () => ({
   getTimelineYears: vi.fn(),
   getTodayFlashbacks: vi.fn(),
   startMemorySourceScan: vi.fn(),
-  SnapmemoriaApiError: class SnapmemoriaApiError extends Error {},
+  MemoriaVaultApiError: class MemoriaVaultApiError extends Error {},
 }));
 
 import {
@@ -39,7 +39,7 @@ import {
   selectMemorySourceFolder,
   startMemorySourceScan,
   getTimelineYears,
-} from './api/snapmemoriaApi';
+} from './api/memoriaVaultApi';
 
 const createMemorySourceMock = vi.mocked(createMemorySource);
 const getDiagnosticsMock = vi.mocked(getDiagnostics);
@@ -156,7 +156,7 @@ describe('App onboarding', () => {
     expect(
       screen.getByText('Choose exported archive folder'),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/SnapMemoria/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/MemoriaVault/)).not.toBeInTheDocument();
     expect(screen.queryByText(/official Snapchat/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/affiliated with/i)).not.toBeInTheDocument();
   });
@@ -307,7 +307,7 @@ describe('App footer', () => {
       screen.getByRole('link', {
         name: 'Open source on GitHub, contributions welcome',
       }),
-    ).toHaveAttribute('href', 'https://github.com/cnoupoue/snapmemoria');
+    ).toHaveAttribute('href', 'https://github.com/cnoupoue/memoriavault');
 
     expect(screen.getByRole('link', { name: 'LinkedIn' })).toHaveAttribute(
       'href',

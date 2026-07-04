@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Diagnostics, MemorySource } from '../api/types';
 import { SettingsPage } from './SettingsPage';
 
-vi.mock('../api/snapmemoriaApi', () => ({
+vi.mock('../api/memoriaVaultApi', () => ({
   createMemorySource: vi.fn(),
   deleteMemorySource: vi.fn(),
   getDiagnostics: vi.fn(),
@@ -14,7 +14,7 @@ vi.mock('../api/snapmemoriaApi', () => ({
   getMemorySources: vi.fn(),
   selectMemorySourceFolder: vi.fn(),
   startMemorySourceScan: vi.fn(),
-  SnapmemoriaApiError: class SnapmemoriaApiError extends Error {
+  MemoriaVaultApiError: class MemoriaVaultApiError extends Error {
     readonly status: number;
     readonly code: string;
     readonly timestamp: string | null;
@@ -40,9 +40,9 @@ import {
   getMemorySourceAvailability,
   getMemorySources,
   selectMemorySourceFolder,
-  SnapmemoriaApiError,
+  MemoriaVaultApiError,
   startMemorySourceScan,
-} from '../api/snapmemoriaApi';
+} from '../api/memoriaVaultApi';
 
 const createMemorySourceMock = vi.mocked(createMemorySource);
 const deleteMemorySourceMock = vi.mocked(deleteMemorySource);
@@ -207,7 +207,7 @@ describe('SettingsPage', () => {
 
     getMemorySourcesMock.mockResolvedValue([]);
     selectMemorySourceFolderMock.mockRejectedValue(
-      new SnapmemoriaApiError({
+      new MemoriaVaultApiError({
         status: 409,
         code: 'FOLDER_PICKER_UNAVAILABLE',
         message:
@@ -298,7 +298,7 @@ describe('SettingsPage', () => {
         'Compatible Snapchat export formats may be read locally. Compatibility references are descriptive only.',
       ),
     ).toBeInTheDocument();
-    expect(screen.queryByText(/SnapMemoria/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/MemoriaVault/)).not.toBeInTheDocument();
     expect(screen.queryByText(/official Snapchat/i)).not.toBeInTheDocument();
   });
 

@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-ARTIFACT_ID ?= snapmemoria
+ARTIFACT_ID ?= memoria-vault
 APP_NAME ?= Memoria Vault
 APP_ARTIFACT_NAME ?= Memoria-Vault
 APP_ID ?= be.cnoupoue.memoriavault
@@ -184,7 +184,7 @@ prepare-bundled-ffmpeg: prepare-macos-input check-bundled-ffmpeg ## Stage bundle
 generate-macos-icon: check-icon-tools ## Generate the macOS app icon from the favicon PNG
 	@test -f "$(MACOS_ICON_SOURCE)" || { echo "Missing icon source: $(MACOS_ICON_SOURCE)"; exit 1; }
 	@set -e; \
-	tmp_dir="$$(mktemp -d "$${TMPDIR:-/tmp}/snapmemoria-icon.XXXXXX")"; \
+	tmp_dir="$$(mktemp -d "$${TMPDIR:-/tmp}/memoriavault-icon.XXXXXX")"; \
 	iconset="$$tmp_dir/$(APP_NAME).iconset"; \
 	mkdir -p "$$iconset" "$$(dirname "$(MACOS_ICON)")"; \
 	sips -z 16 16 "$(MACOS_ICON_SOURCE)" --out "$$iconset/icon_16x16.png" >/dev/null; \

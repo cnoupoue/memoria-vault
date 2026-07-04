@@ -63,13 +63,13 @@ Verify the installation:
 ffmpeg -version
 ```
 
-Video playback does not depend on FFmpeg. If FFmpeg is unavailable, Memoria Vault continues to browse and open original videos, but video preview thumbnails are shown with a fallback state. Development can use FFmpeg from the system `PATH` or an explicit `snapmemoria.ffmpeg.path` value.
+Video playback does not depend on FFmpeg. If FFmpeg is unavailable, Memoria Vault continues to browse and open original videos, but video preview thumbnails are shown with a fallback state. Development can use FFmpeg from the system `PATH` or an explicit `memoriavault.ffmpeg.path` value.
 
 ### Clone and install
 
 ```bash
-git clone https://github.com/cnoupoue/snapmemoria.git
-cd snapmemoria
+git clone https://github.com/cnoupoue/memoriavault.git
+cd memoriavault
 make install
 ```
 
@@ -251,7 +251,7 @@ make check-bundled-ffmpeg
 
 The package is intended for macOS Apple Silicon, and it is unsigned and not notarized yet. macOS may show a security warning for unsigned local builds. Code signing and notarization are planned future release steps.
 
-The macOS package identifier is `be.cnoupoue.memoriavault`. Earlier local builds may have used the internal `be.cnoupoue.snapmemoria` identifier, so maintainers should treat upgrades from pre-release builds as a compatibility check before distribution.
+The macOS package identifier is `be.cnoupoue.memoriavault`. Maintainers should treat upgrades from pre-release builds as a compatibility check before distribution.
 
 ## Creating a macOS release
 
@@ -356,18 +356,3 @@ Planned improvements include:
 ## License
 
 Memoria Vault is licensed under the [MIT License](LICENSE).
-
-## Retained internal identifiers
-
-Some internal identifiers intentionally still use `snapmemoria` or related implementation names for compatibility and to avoid risky data migrations:
-
-* Java package names under `be.cnoupoue.snapmemoria`
-* Maven artifact ID `snapmemoria`
-* Spring configuration keys such as `snapmemoria.thumbnail.directory`
-* Environment variable aliases such as `SNAPMEMORIA_FFMPEG_PATH`
-* Existing SQLite data and cache directories under `~/.snapmemoria`
-* Existing database file name `snapmemoria.db`
-* Applied Flyway migration filenames and database schema history
-* Internal parser names and tests for compatible export file structures
-
-These are implementation details and should not appear in normal user-facing branding. Low-risk cleanup of internal names can be evaluated in a future migration plan after public naming is final.

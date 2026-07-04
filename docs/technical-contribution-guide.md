@@ -13,7 +13,7 @@ Memoria Vault is a local-first application for browsing compatible exported memo
 The project is split into two applications:
 
 ```text
-snapmemoria/
+memoriavault/
 ├── src/                         # Spring Boot backend
 ├── frontend/                    # React + TypeScript frontend
 ├── docs/                        # Technical documentation
@@ -73,9 +73,9 @@ The source folder picker is a local desktop convenience. It returns only the fol
 Memoria Vault stores local application data under:
 
 ```text
-~/.snapmemoria/
+~/.memoria-vault/
 ├── data/
-│   └── snapmemoria.db
+│   └── memoriavault.db
 └── cache/
     └── thumbnails/
 ```
@@ -89,6 +89,24 @@ This includes:
 * Generated image and video thumbnails
 
 Do not commit these files.
+
+### Internal rename history
+
+The project was previously named `snapmemoria` internally. Public branding is now `Memoria Vault`,
+and current code, package, Maven artifact, and configuration identifiers use `memoriavault`.
+
+Compatibility is intentionally retained for existing local data:
+
+* New installations use `~/.memoria-vault/`.
+* If `~/.memoria-vault/` does not exist and `~/.snapmemoria/` does, the application uses the legacy
+  directory in place.
+* No startup path automatically deletes, overwrites, or moves legacy data.
+* Deprecated `snapmemoria.*` configuration keys are supported as aliases for one release cycle when
+  the corresponding `memoriavault.*` key is absent.
+* Existing Flyway migrations, table names, column names, and persisted schema history are preserved.
+
+After at least one compatibility release, maintainers can evaluate removing deprecated configuration
+aliases. Legacy data-directory migration should remain explicit and conservative.
 
 ## Compatible export format
 
@@ -144,15 +162,15 @@ Verify the installation:
 ffmpeg -version
 ```
 
-FFmpeg is used only for video thumbnail generation. Original video playback works through the media streaming endpoint even when FFmpeg is unavailable. During development, Memoria Vault resolves FFmpeg from `snapmemoria.ffmpeg.path` first, then the current `PlatformService` bundled FFmpeg location if present, then the system `PATH`.
+FFmpeg is used only for video thumbnail generation. Original video playback works through the media streaming endpoint even when FFmpeg is unavailable. During development, Memoria Vault resolves FFmpeg from `memoriavault.ffmpeg.path` first, then the current `PlatformService` bundled FFmpeg location if present, then the system `PATH`.
 
 ## Initial setup
 
 Clone the repository:
 
 ```bash
-git clone https://github.com/YOUR_GITHUB_USERNAME/snapmemoria.git
-cd snapmemoria
+git clone https://github.com/YOUR_GITHUB_USERNAME/memoriavault.git
+cd memoriavault
 ```
 
 Install root tooling dependencies:
@@ -170,7 +188,7 @@ npm --prefix frontend install
 Create the local database directory:
 
 ```bash
-mkdir -p ~/.snapmemoria/data
+mkdir -p ~/.memoria-vault/data
 ```
 
 ## Running locally
@@ -212,7 +230,7 @@ http://localhost:5173
 The backend is organized by feature.
 
 ```text
-be.cnoupoue.snapmemoria/
+be.cnoupoue.memoriavault/
 ├── config/          # Async execution and application configuration
 ├── indexing/        # Scanner, scan jobs, progress tracking
 ├── memory/          # Indexed Memories, gallery, timeline, flashbacks
@@ -227,7 +245,7 @@ be.cnoupoue.snapmemoria/
 Platform-specific runtime behavior lives under:
 
 ```text
-be.cnoupoue.snapmemoria.platform
+be.cnoupoue.memoriavault.platform
 ├── PlatformService.java
 ├── PlatformType.java
 ├── PlatformCapabilities.java
@@ -417,7 +435,7 @@ Run:
 ./mvnw test
 ```
 
-The test profile uses a temporary SQLite database and must never use your personal `~/.snapmemoria/data/snapmemoria.db`.
+The test profile uses a temporary SQLite database and must never use your personal `~/.memoria-vault/data/memoriavault.db`.
 
 Backend tests should cover:
 

@@ -9,10 +9,10 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>be.cnoupoue</groupId>
-	<artifactId>snapmemoria</artifactId>
+	<artifactId>memoria-vault</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name/>
-	<description/>
+	<name>Memoria Vault</name>
+	<description>A private, local-first app for browsing compatible exported memory archives.</description>
 	<url/>
 	<licenses>
 		<license/>

@@ -14,9 +14,9 @@ import {
   getMemorySourceAvailability,
   getMemorySources,
   selectMemorySourceFolder,
-  SnapmemoriaApiError,
+  MemoriaVaultApiError,
   startMemorySourceScan,
-} from '../api/snapmemoriaApi';
+} from '../api/memoriaVaultApi';
 import type {
   MemorySource,
   MemoryScanJob,
@@ -230,7 +230,7 @@ export function SettingsPage({
       setName((currentName) => currentName || selection.name || '');
     } catch (selectionError) {
       setFolderPickerMessage(
-        selectionError instanceof SnapmemoriaApiError
+        selectionError instanceof MemoriaVaultApiError
           ? selectionError.message
           : 'Folder selection is unavailable. Enter the folder path manually.',
       );
@@ -469,7 +469,7 @@ export function SettingsPage({
         startPolling(startedJob.id, createdSource.id);
       } catch (scanError) {
         setError(
-          scanError instanceof SnapmemoriaApiError
+          scanError instanceof MemoriaVaultApiError
             ? scanError.message
             : 'The source was added, but the scan could not start automatically.',
         );
@@ -506,7 +506,7 @@ export function SettingsPage({
       startPolling(startedJob.id, source.id);
     } catch (scanError) {
       setError(
-        scanError instanceof SnapmemoriaApiError
+        scanError instanceof MemoriaVaultApiError
           ? scanError.message
           : 'Could not start this scan. A scan may already be running for this source.',
       );
