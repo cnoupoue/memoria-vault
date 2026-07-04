@@ -144,7 +144,7 @@ Verify the installation:
 ffmpeg -version
 ```
 
-FFmpeg is used only for video thumbnail generation. Original video playback works through the media streaming endpoint even when FFmpeg is unavailable. During development, Memoria Vault resolves FFmpeg from `snapmemoria.ffmpeg.path` first, then a packaged app bundle location if present, then the system `PATH`.
+FFmpeg is used only for video thumbnail generation. Original video playback works through the media streaming endpoint even when FFmpeg is unavailable. During development, Memoria Vault resolves FFmpeg from `snapmemoria.ffmpeg.path` first, then the current `PlatformService` bundled FFmpeg location if present, then the system `PATH`.
 
 ## Initial setup
 
@@ -216,10 +216,81 @@ be.cnoupoue.snapmemoria/
 ├── config/          # Async execution and application configuration
 ├── indexing/        # Scanner, scan jobs, progress tracking
 ├── memory/          # Indexed Memories, gallery, timeline, flashbacks
+├── platform/        # OS detection, runtime paths, and platform capabilities
 ├── source/          # Configured source folders
 ├── streaming/       # Secure media streaming endpoints
 └── thumbnail/       # Image and FFmpeg video thumbnail generation
 ```
+
+### Platform architecture
+
+Platform-specific runtime behavior lives under:
+
+```text
+be.cnoupoue.snapmemoria.platform
+├── PlatformService.java
+├── PlatformType.java
+├── PlatformCapabilities.java
+├── PlatformRuntimePaths.java
+├── PlatformServiceFactory.java
+├── common/
+├── macos/
+├── windows/
+└── linux/
+```
+
+Platform-independent services must depend on `PlatformService` or another small interface, not on
+`System.getProperty("os.name")`, jpackage bundle paths, or operating-system-specific filesystem
+layouts.
+
+Use these ownership rules:
+
+* `platform/common` contains defaults, safe unsupported behavior, shared executable validation, and
+  safe diagnostic labels.
+* `platform/macos` contains macOS jpackage assumptions such as `Memoria Vault.app/Contents/...`.
+* `platform/windows` and `platform/linux` are placeholders until those platforms are implemented.
+* Feature services such as thumbnail generation, diagnostics, and source management should not know
+  where a platform stores bundled executables.
+
+Bundled executable resolution is centralized through the platform abstraction. FFmpeg precedence is:
+
+```text
+1. Explicit configured FFmpeg path
+2. Bundled platform-specific FFmpeg from PlatformService
+3. System PATH executable
+4. Unavailable fallback
+```
+
+Native folder selection is also abstracted. macOS uses `MacosNativeFolderPicker`; unsupported or
+headless environments use `UnsupportedNativeFolderPicker`, which returns the structured
+`FOLDER_PICKER_UNAVAILABLE` API error and keeps manual path entry available.
+
+Diagnostics may report safe labels such as OS, architecture, and packaging type. They must not expose
+usernames, local paths, volume names, environment variables, hardware serial numbers, or device
+models.
+
+Packaging files are organized by platform:
+
+```text
+packaging/
+├── common/
+├── macos/
+│   ├── icon/
+│   ├── ffmpeg/
+│   └── scripts/
+├── windows/
+└── linux/
+```
+
+To add Windows support:
+
+1. Add `WindowsPlatformService`.
+2. Implement bundled FFmpeg path resolution.
+3. Implement or validate native folder picker behavior.
+4. Add Windows packaging assets.
+5. Add jpackage MSI/EXE targets.
+6. Add Windows CI/release workflow.
+7. Add platform-specific tests.
 
 ### `source`
 
@@ -303,7 +374,7 @@ Original media files must never be modified.
 
 If FFmpeg is unavailable, video thumbnail requests return `VIDEO_THUMBNAIL_UNAVAILABLE` and the frontend shows a video fallback while keeping the original video openable.
 
-Packaged macOS Apple Silicon releases can bundle FFmpeg at `packaging/macos/ffmpeg/arm64/ffmpeg`. Public binary distribution requires a verified source, architecture, checksum, license configuration, and matching third-party notices. The packaging flow does not download FFmpeg automatically.
+Packaged macOS Apple Silicon releases can bundle FFmpeg at `packaging/macos/ffmpeg/arm64/ffmpeg`. At runtime, the macOS platform service resolves it from `Memoria Vault.app/Contents/app/ffmpeg/ffmpeg`. Public binary distribution requires a verified source, architecture, checksum, license configuration, and matching third-party notices. The packaging flow does not download FFmpeg automatically.
 
 ## Database migrations
 

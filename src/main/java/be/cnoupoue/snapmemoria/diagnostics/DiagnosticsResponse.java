@@ -1,8 +1,10 @@
 package be.cnoupoue.snapmemoria.diagnostics;
 
+import be.cnoupoue.snapmemoria.platform.PlatformDiagnosticInfo;
+
 public record DiagnosticsResponse(
     String appVersion,
-    String platform,
+    PlatformDiagnosticInfo platform,
     VideoPreviewDiagnosticsResponse videoPreviews,
     SourceDiagnosticsResponse sources,
     DatabaseDiagnosticsResponse database) {}

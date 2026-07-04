@@ -127,7 +127,11 @@ export type DatabaseDiagnostics = {
 
 export type Diagnostics = {
   appVersion: string;
-  platform: string | null;
+  platform: {
+    os: string;
+    architecture: string;
+    packaging: string;
+  } | null;
   videoPreviews: VideoPreviewDiagnostics;
   sources: SourceDiagnostics;
   database: DatabaseDiagnostics;

@@ -136,7 +136,10 @@ function buildDiagnosticReport(diagnostics: Diagnostics): string {
   ];
 
   if (diagnostics.platform) {
-    lines.push(`Platform: ${diagnostics.platform}`);
+    lines.push(
+      `Platform: ${diagnostics.platform.os} ${diagnostics.platform.architecture}`,
+      `Packaging: ${diagnostics.platform.packaging}`,
+    );
   }
 
   lines.push(
@@ -657,6 +660,21 @@ export function SettingsPage({
                 <dt>Application</dt>
                 <dd>Memoria Vault {diagnostics.appVersion}</dd>
               </div>
+              {diagnostics.platform && (
+                <div>
+                  <dt>Platform</dt>
+                  <dd>
+                    {diagnostics.platform.os}{' '}
+                    {diagnostics.platform.architecture}
+                  </dd>
+                </div>
+              )}
+              {diagnostics.platform && (
+                <div>
+                  <dt>Packaging</dt>
+                  <dd>{diagnostics.platform.packaging}</dd>
+                </div>
+              )}
               <div>
                 <dt>Video previews</dt>
                 <dd>{getVideoPreviewStatus(diagnostics)}</dd>

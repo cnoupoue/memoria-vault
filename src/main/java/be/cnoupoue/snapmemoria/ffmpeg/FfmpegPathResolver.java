@@ -1,8 +1,7 @@
 package be.cnoupoue.snapmemoria.ffmpeg;
 
+import be.cnoupoue.snapmemoria.platform.PlatformService;
 import java.io.File;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -22,21 +21,23 @@ public class FfmpegPathResolver {
   private static final String FFMPEG_BINARY = "ffmpeg";
 
   private final String configuredPath;
-  private final Supplier<Optional<Path>> bundledAppDirectorySupplier;
+  private final Supplier<Optional<Path>> bundledFfmpegPathSupplier;
   private final String pathEnvironment;
   private volatile FfmpegResolution cachedResolution;
 
   @Autowired
-  public FfmpegPathResolver(@Value("${snapmemoria.ffmpeg.path:}") String configuredPath) {
-    this(configuredPath, FfmpegPathResolver::detectBundledAppDirectory, System.getenv("PATH"));
+  public FfmpegPathResolver(
+      @Value("${snapmemoria.ffmpeg.path:}") String configuredPath,
+      PlatformService platformService) {
+    this(configuredPath, platformService::resolveBundledFfmpegPath, System.getenv("PATH"));
   }
 
   public FfmpegPathResolver(
       String configuredPath,
-      Supplier<Optional<Path>> bundledAppDirectorySupplier,
+      Supplier<Optional<Path>> bundledFfmpegPathSupplier,
       String pathEnvironment) {
     this.configuredPath = configuredPath;
-    this.bundledAppDirectorySupplier = bundledAppDirectorySupplier;
+    this.bundledFfmpegPathSupplier = bundledFfmpegPathSupplier;
     this.pathEnvironment = pathEnvironment;
   }
 
@@ -93,10 +94,7 @@ public class FfmpegPathResolver {
   }
 
   private Optional<Path> bundledCandidate() {
-    return bundledAppDirectorySupplier
-        .get()
-        .map(appDirectory -> appDirectory.resolve("ffmpeg").resolve(FFMPEG_BINARY))
-        .flatMap(this::executableCandidate);
+    return bundledFfmpegPathSupplier.get().flatMap(this::executableCandidate);
   }
 
   private Optional<Path> systemPathCandidate() {
@@ -117,30 +115,6 @@ public class FfmpegPathResolver {
   private Optional<Path> executableCandidate(Path candidate) {
     if (Files.isRegularFile(candidate) && Files.isExecutable(candidate)) {
       return Optional.of(candidate);
-    }
-
-    return Optional.empty();
-  }
-
-  private static Optional<Path> detectBundledAppDirectory() {
-    try {
-      URI codeSourceUri =
-          FfmpegPathResolver.class.getProtectionDomain().getCodeSource().getLocation().toURI();
-      Path codeSourcePath = Path.of(codeSourceUri).toAbsolutePath().normalize();
-      Path cursor = Files.isDirectory(codeSourcePath) ? codeSourcePath : codeSourcePath.getParent();
-
-      while (cursor != null) {
-        if (cursor.getFileName() != null
-            && "app".equals(cursor.getFileName().toString())
-            && cursor.getParent() != null
-            && "Contents".equals(cursor.getParent().getFileName().toString())) {
-          return Optional.of(cursor);
-        }
-
-        cursor = cursor.getParent();
-      }
-    } catch (IllegalArgumentException | SecurityException | URISyntaxException exception) {
-      LOGGER.debug("Could not inspect application location for bundled FFmpeg.", exception);
     }
 
     return Optional.empty();

@@ -9,11 +9,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-macos-${{ github.ref_name }}
+  group: release-macos-arm64-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
-  release-macos:
+  release-macos-arm64:
     name: Build and publish macOS Apple Silicon release
     runs-on: macos-14
 

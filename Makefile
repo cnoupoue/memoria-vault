@@ -13,13 +13,17 @@ DIST_DIR ?= dist
 APP_OUTPUT_DIR ?= $(DIST_DIR)/app
 INSTALLER_OUTPUT_DIR ?= $(DIST_DIR)/installers
 JPACKAGE_INPUT_DIR ?= $(DIST_DIR)/jpackage-input
-MACOS_ARCH ?= arm64
-MACOS_ICON ?= packaging/macos/MemoriaVault.icns
+PACKAGING_DIR ?= packaging
+TARGET_OS ?= macos
+TARGET_ARCH ?= arm64
+MACOS_PACKAGING_DIR ?= $(PACKAGING_DIR)/macos
+MACOS_ARCH ?= $(TARGET_ARCH)
+MACOS_ICON ?= $(MACOS_PACKAGING_DIR)/icon/MemoriaVault.icns
 MACOS_ICON_SOURCE ?= frontend/public/favicon.png
 MACOS_APP_PATH ?= $(APP_OUTPUT_DIR)/$(APP_NAME).app
 MACOS_DMG_PATH ?= $(INSTALLER_OUTPUT_DIR)/$(APP_ARTIFACT_NAME)-$(APP_VERSION)-macos-$(MACOS_ARCH).dmg
 JLINK_OPTIONS ?= --strip-debug --no-man-pages --no-header-files --compress zip-6
-BUNDLED_FFMPEG_SOURCE ?= packaging/macos/ffmpeg/$(MACOS_ARCH)/ffmpeg
+BUNDLED_FFMPEG_SOURCE ?= $(MACOS_PACKAGING_DIR)/ffmpeg/$(MACOS_ARCH)/ffmpeg
 BUNDLED_FFMPEG_APP_DIR ?= ffmpeg
 BUNDLED_FFMPEG_STAGED_PATH ?= $(JPACKAGE_INPUT_DIR)/$(BUNDLED_FFMPEG_APP_DIR)/ffmpeg
 BUNDLED_FFMPEG_APP_PATH ?= $(MACOS_APP_PATH)/Contents/app/$(BUNDLED_FFMPEG_APP_DIR)/ffmpeg
@@ -31,6 +35,7 @@ BUNDLED_FFMPEG_APP_PATH ?= $(MACOS_APP_PATH)/Contents/app/$(BUNDLED_FFMPEG_APP_D
 	build build-backend build-frontend build-production package-jar \
 	run-production verify-production inspect-jar \
 	package-macos-app package-macos-dmg package-macos run-macos-app \
+	package-windows package-linux \
 	inspect-macos-app clean-packaging generate-macos-icon prepare-macos-input \
 	check-bundled-ffmpeg prepare-bundled-ffmpeg inspect-bundled-ffmpeg \
 	check-macos check-macos-arm64 check-jpackage check-icon-tools \
@@ -166,7 +171,7 @@ prepare-macos-input: package-jar ## Stage only the production JAR for jpackage
 	cp "$(JAR_PATH)" "$(JPACKAGE_INPUT_DIR)/"
 
 check-bundled-ffmpeg: check-macos-arm64 ## Verify the macOS arm64 FFmpeg binary is present for packaging
-	@test -f "$(BUNDLED_FFMPEG_SOURCE)" || { echo "Missing bundled FFmpeg: $(BUNDLED_FFMPEG_SOURCE). Add a verified macOS arm64 FFmpeg binary and update packaging/macos/ffmpeg/README.md plus THIRD_PARTY_NOTICES.md."; exit 1; }
+	@test -f "$(BUNDLED_FFMPEG_SOURCE)" || { echo "Missing bundled FFmpeg: $(BUNDLED_FFMPEG_SOURCE). Add a verified macOS $(MACOS_ARCH) FFmpeg binary and update packaging/macos/ffmpeg/README.md plus THIRD_PARTY_NOTICES.md."; exit 1; }
 	@test -x "$(BUNDLED_FFMPEG_SOURCE)" || { echo "Bundled FFmpeg is not executable: $(BUNDLED_FFMPEG_SOURCE). Run 'chmod +x $(BUNDLED_FFMPEG_SOURCE)' after verifying the binary."; exit 1; }
 	@file "$(BUNDLED_FFMPEG_SOURCE)" | grep -Eq 'arm64' || { echo "Bundled FFmpeg must support macOS arm64: $(BUNDLED_FFMPEG_SOURCE)."; exit 1; }
 	@echo "Bundled FFmpeg is present and executable: $(BUNDLED_FFMPEG_SOURCE)"
@@ -195,7 +200,7 @@ generate-macos-icon: check-icon-tools ## Generate the macOS app icon from the fa
 	if command -v iconutil >/dev/null 2>&1 && iconutil -c icns "$$iconset" -o "$(MACOS_ICON)" >/dev/null 2>&1; then \
 		true; \
 	else \
-		node packaging/macos/create-icns.mjs "$$iconset" "$(MACOS_ICON)"; \
+		node "$(MACOS_PACKAGING_DIR)/scripts/create-icns.mjs" "$$iconset" "$(MACOS_ICON)"; \
 	fi; \
 	rm -rf "$$tmp_dir"; \
 	test -f "$(MACOS_ICON)" || { echo "Icon generation failed: $(MACOS_ICON)"; exit 1; }
@@ -231,6 +236,14 @@ package-macos-dmg: package-macos-app ## Create dist/installers/Memoria-Vault-<ve
 	@mv "$(INSTALLER_OUTPUT_DIR)/$(APP_NAME)-$(JPACKAGE_VERSION).dmg" "$(MACOS_DMG_PATH)"
 
 package-macos: package-macos-dmg ## Build the macOS app image and DMG
+
+package-windows: ## Future work: Windows packaging is not implemented yet
+	@echo "Windows packaging is not implemented yet. See packaging/windows/README.md."
+	@exit 1
+
+package-linux: ## Future work: Linux packaging is not implemented yet
+	@echo "Linux packaging is not implemented yet. See packaging/linux/README.md."
+	@exit 1
 
 run-macos-app: inspect-macos-app ## Open the generated Memoria Vault.app
 	open "$(MACOS_APP_PATH)"

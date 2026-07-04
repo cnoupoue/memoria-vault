@@ -3,6 +3,7 @@ package be.cnoupoue.snapmemoria.diagnostics;
 import be.cnoupoue.snapmemoria.ffmpeg.FfmpegPathResolver;
 import be.cnoupoue.snapmemoria.ffmpeg.FfmpegResolution;
 import be.cnoupoue.snapmemoria.ffmpeg.FfmpegSource;
+import be.cnoupoue.snapmemoria.platform.PlatformService;
 import be.cnoupoue.snapmemoria.source.MemorySource;
 import be.cnoupoue.snapmemoria.source.MemorySourceRepository;
 import be.cnoupoue.snapmemoria.source.SourceAvailabilityService;
@@ -21,16 +22,19 @@ public class DiagnosticsService {
   private final FfmpegPathResolver ffmpegPathResolver;
   private final MemorySourceRepository memorySourceRepository;
   private final SourceAvailabilityService sourceAvailabilityService;
+  private final PlatformService platformService;
   private final Optional<BuildProperties> buildProperties;
 
   public DiagnosticsService(
       FfmpegPathResolver ffmpegPathResolver,
       MemorySourceRepository memorySourceRepository,
       SourceAvailabilityService sourceAvailabilityService,
+      PlatformService platformService,
       Optional<BuildProperties> buildProperties) {
     this.ffmpegPathResolver = ffmpegPathResolver;
     this.memorySourceRepository = memorySourceRepository;
     this.sourceAvailabilityService = sourceAvailabilityService;
+    this.platformService = platformService;
     this.buildProperties = buildProperties;
   }
 
@@ -41,7 +45,7 @@ public class DiagnosticsService {
 
     return new DiagnosticsResponse(
         appVersion(),
-        null,
+        platformService.getDiagnosticInfo(),
         new VideoPreviewDiagnosticsResponse(
             resolution.available(),
             publicFfmpegSource(resolution.source()),

@@ -15,13 +15,10 @@ class FfmpegPathResolverTest {
   @Test
   void configuredFfmpegPathTakesPriority() throws Exception {
     Path configuredFfmpeg = executable(temporaryDirectory.resolve("configured-ffmpeg"));
-    Path bundledFfmpeg = executable(temporaryDirectory.resolve("app/ffmpeg/ffmpeg"));
+    Path bundledFfmpeg = executable(temporaryDirectory.resolve("platform-bundle/bin/ffmpeg"));
 
     FfmpegResolution resolution =
-        new FfmpegPathResolver(
-                configuredFfmpeg.toString(),
-                () -> Optional.of(bundledFfmpeg.getParent().getParent()),
-                "")
+        new FfmpegPathResolver(configuredFfmpeg.toString(), () -> Optional.of(bundledFfmpeg), "")
             .resolve();
 
     assertThat(resolution.available()).isTrue();
@@ -31,11 +28,10 @@ class FfmpegPathResolverTest {
 
   @Test
   void bundledFfmpegIsUsedWhenConfiguredPathIsAbsent() throws Exception {
-    Path bundledAppDirectory = Files.createDirectories(temporaryDirectory.resolve("app"));
-    Path bundledFfmpeg = executable(bundledAppDirectory.resolve("ffmpeg/ffmpeg"));
+    Path bundledFfmpeg = executable(temporaryDirectory.resolve("platform-bundle/bin/ffmpeg"));
 
     FfmpegResolution resolution =
-        new FfmpegPathResolver("", () -> Optional.of(bundledAppDirectory), "").resolve();
+        new FfmpegPathResolver("", () -> Optional.of(bundledFfmpeg), "").resolve();
 
     assertThat(resolution.available()).isTrue();
     assertThat(resolution.executablePath()).isEqualTo(bundledFfmpeg);
@@ -64,6 +60,18 @@ class FfmpegPathResolverTest {
     assertThat(resolution.executablePath()).isNull();
     assertThat(resolution.source()).isEqualTo(FfmpegSource.UNAVAILABLE);
     assertThat(resolution.diagnosticMessage()).isEqualTo("Original videos can still be opened.");
+  }
+
+  @Test
+  void resolverDoesNotContainMacosBundleAssumptions() throws Exception {
+    String resolverSource =
+        Files.readString(
+            Path.of("src/main/java/be/cnoupoue/snapmemoria/ffmpeg/FfmpegPathResolver.java"));
+
+    assertThat(resolverSource)
+        .doesNotContain("Contents")
+        .doesNotContain(".app")
+        .doesNotContain("MacOS");
   }
 
   private Path executable(Path path) throws Exception {

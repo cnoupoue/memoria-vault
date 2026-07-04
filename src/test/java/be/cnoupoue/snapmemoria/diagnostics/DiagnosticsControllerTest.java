@@ -7,6 +7,8 @@ import static org.mockito.Mockito.when;
 import be.cnoupoue.snapmemoria.ffmpeg.FfmpegPathResolver;
 import be.cnoupoue.snapmemoria.ffmpeg.FfmpegResolution;
 import be.cnoupoue.snapmemoria.ffmpeg.FfmpegSource;
+import be.cnoupoue.snapmemoria.platform.PlatformDiagnosticInfo;
+import be.cnoupoue.snapmemoria.platform.PlatformService;
 import be.cnoupoue.snapmemoria.source.MemorySource;
 import be.cnoupoue.snapmemoria.source.MemorySourceRepository;
 import be.cnoupoue.snapmemoria.source.SourceAvailability;
@@ -46,12 +48,14 @@ class DiagnosticsControllerTest {
   private FfmpegPathResolver ffmpegPathResolver;
   private MemorySourceRepository memorySourceRepository;
   private SourceAvailabilityService sourceAvailabilityService;
+  private PlatformService platformService;
 
   @BeforeEach
   void setUp() {
     ffmpegPathResolver = mock(FfmpegPathResolver.class);
     memorySourceRepository = mock(MemorySourceRepository.class);
     sourceAvailabilityService = mock(SourceAvailabilityService.class);
+    platformService = mock(PlatformService.class);
 
     when(ffmpegPathResolver.resolve())
         .thenReturn(
@@ -68,6 +72,8 @@ class DiagnosticsControllerTest {
             new SourceAvailability(
                 SourceAvailabilityStatus.UNAVAILABLE,
                 "Connect the drive containing this source, then refresh its status."));
+    when(platformService.getDiagnosticInfo())
+        .thenReturn(new PlatformDiagnosticInfo("macOS", "arm64", "jpackage"));
   }
 
   @Test
@@ -123,6 +129,18 @@ class DiagnosticsControllerTest {
   }
 
   @Test
+  void platformDiagnosticsExposeSafeLabelsOnly() {
+    DiagnosticsResponse response = service("0.1.0").getDiagnostics();
+
+    assertThat(response.platform())
+        .isEqualTo(new PlatformDiagnosticInfo("macOS", "arm64", "jpackage"));
+    assertThat(response.toString())
+        .doesNotContain("/Applications")
+        .doesNotContain("/Users")
+        .doesNotContain("Memoria Vault.app/Contents");
+  }
+
+  @Test
   void databaseStatusIsReturnedSafely() {
     DiagnosticsResponse response = service("0.1.0").getDiagnostics();
 
@@ -134,7 +152,7 @@ class DiagnosticsControllerTest {
     DiagnosticsResponse response = new DiagnosticsController(service("0.1.0")).getDiagnostics();
 
     assertThat(response.appVersion()).isNotBlank();
-    assertThat(response.platform()).isNull();
+    assertThat(response.platform()).isNotNull();
     assertThat(response.videoPreviews()).isNotNull();
     assertThat(response.sources()).isNotNull();
     assertThat(response.database()).isNotNull();
@@ -148,6 +166,7 @@ class DiagnosticsControllerTest {
         ffmpegPathResolver,
         memorySourceRepository,
         sourceAvailabilityService,
+        platformService,
         Optional.of(new BuildProperties(properties)));
   }
 }
