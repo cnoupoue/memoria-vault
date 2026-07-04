@@ -174,6 +174,12 @@ make build
 # Build the standalone production JAR
 make build-production
 
+# Create a verified local release tag
+make tag VERSION=0.1.0
+
+# Push an existing release tag and trigger the release workflow
+make push-tag VERSION=0.1.0
+
 # Run the standalone production JAR
 make run-production
 
@@ -246,6 +252,53 @@ make check-bundled-ffmpeg
 The package is intended for macOS Apple Silicon, and it is unsigned and not notarized yet. macOS may show a security warning for unsigned local builds. Code signing and notarization are planned future release steps.
 
 The macOS package identifier is `be.cnoupoue.memoriavault`. Earlier local builds may have used the internal `be.cnoupoue.snapmemoria` identifier, so maintainers should treat upgrades from pre-release builds as a compatibility check before distribution.
+
+## Creating a macOS release
+
+Maintainers can create a macOS Apple Silicon release after all checks and manual packaging tests pass.
+
+```bash
+make tag VERSION=0.1.0
+git push origin v0.1.0
+```
+
+`make tag` validates the version format, requires a clean `main` worktree synchronized with `origin/main`, checks for an existing local or remote tag, verifies that the Maven project version matches the release version or the matching `-SNAPSHOT` development version, runs `make verify`, and creates an annotated local tag.
+
+Pushing the tag triggers GitHub Actions, which builds the macOS Apple Silicon DMG and creates a GitHub Release automatically. The release page includes:
+
+```text
+Memoria-Vault-0.1.0-macos-arm64.dmg
+Memoria-Vault-0.1.0-macos-arm64.dmg.sha256
+```
+
+The release workflow requires:
+
+* A valid bundled FFmpeg binary and complete provenance metadata.
+* macOS arm64 packaging compatibility on the GitHub Actions runner.
+* Java 21 and Node.js 22 dependency installation through the lockfiles.
+
+The package is Apple Silicon only. Signing and notarization are not included yet, so macOS may show a security warning.
+
+To publish with the optional helper instead of typing the push command directly:
+
+```bash
+make push-tag VERSION=0.1.0
+```
+
+This only pushes an existing local tag; it does not create one.
+
+### Testing release tag creation without publishing
+
+Do not create or push a real release tag during implementation tests. For a local dry run after the working tree is clean, use a version that matches the Maven project version and delete the local tag afterward:
+
+```bash
+make format
+make verify
+make tag VERSION=0.1.0
+git tag -d v0.1.0
+```
+
+Only `git push origin v0.1.0` publishes the tag and starts the GitHub Release workflow.
 
 Format the complete project:
 

@@ -34,7 +34,7 @@ BUNDLED_FFMPEG_APP_PATH ?= $(MACOS_APP_PATH)/Contents/app/$(BUNDLED_FFMPEG_APP_D
 	inspect-macos-app clean-packaging generate-macos-icon prepare-macos-input \
 	check-bundled-ffmpeg prepare-bundled-ffmpeg inspect-bundled-ffmpeg \
 	check-macos check-macos-arm64 check-jpackage check-icon-tools \
-	check-production-jar verify clean health
+	check-production-jar tag push-tag verify clean health
 
 help: ## Show available commands
 	@echo ""
@@ -252,6 +252,37 @@ inspect-bundled-ffmpeg: inspect-macos-app ## Verify the generated macOS app cont
 
 clean-packaging: ## Remove generated packaging artifacts only
 	rm -rf "$(DIST_DIR)"
+
+tag: ## Create a verified annotated release tag locally; requires VERSION=MAJOR.MINOR.PATCH
+	@test -n "$(VERSION)" || { echo "VERSION is required. Example: make tag VERSION=0.1.0"; exit 1; }
+	@printf '%s\n' "$(VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' || { echo "VERSION must be stable semantic version MAJOR.MINOR.PATCH without a leading v or suffix. Example: 0.1.0"; exit 1; }
+	@test -z "$$(git status --porcelain)" || { echo "Refusing to tag because the Git working tree is not clean."; exit 1; }
+	@test "$$(git rev-parse --abbrev-ref HEAD)" = "main" || { echo "Refusing to tag because the current branch is not main."; exit 1; }
+	@git fetch origin main --tags
+	@test "$$(git rev-parse HEAD)" = "$$(git rev-parse origin/main)" || { echo "Refusing to tag because HEAD is not synchronized with origin/main."; exit 1; }
+	@if git rev-parse -q --verify "refs/tags/v$(VERSION)" >/dev/null; then \
+		echo "Refusing to tag because v$(VERSION) already exists locally."; \
+		exit 1; \
+	fi
+	@if git ls-remote --exit-code --tags origin "refs/tags/v$(VERSION)" >/dev/null 2>&1; then \
+		echo "Refusing to tag because v$(VERSION) already exists on origin."; \
+		exit 1; \
+	fi
+	@project_version="$$(sed -n '/<artifactId>$(ARTIFACT_ID)<\/artifactId>/,/<\/version>/ s:.*<version>\(.*\)</version>.*:\1:p' pom.xml | head -n 1)"; \
+	if [ "$$project_version" != "$(VERSION)" ] && [ "$$project_version" != "$(VERSION)-SNAPSHOT" ]; then \
+		echo "Refusing to tag because Maven project version $$project_version does not match $(VERSION) or $(VERSION)-SNAPSHOT."; \
+		exit 1; \
+	fi
+	$(MAKE) verify
+	git tag -a "v$(VERSION)" -m "$(APP_NAME) v$(VERSION)"
+	@printf '\nTag created locally: v$(VERSION)\n\nTo trigger the GitHub release pipeline, review the tag and run:\n\ngit push origin v$(VERSION)\n'
+
+push-tag: ## Push an existing local release tag; requires VERSION=MAJOR.MINOR.PATCH
+	@test -n "$(VERSION)" || { echo "VERSION is required. Example: make push-tag VERSION=0.1.0"; exit 1; }
+	@printf '%s\n' "$(VERSION)" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$$' || { echo "VERSION must be stable semantic version MAJOR.MINOR.PATCH without a leading v or suffix. Example: 0.1.0"; exit 1; }
+	@git rev-parse -q --verify "refs/tags/v$(VERSION)" >/dev/null || { echo "Local tag v$(VERSION) does not exist. Run 'make tag VERSION=$(VERSION)' first."; exit 1; }
+	@printf 'This will trigger the macOS GitHub Release workflow for v$(VERSION).\n'
+	git push origin "v$(VERSION)"
 
 verify: ## Run all formatting checks, linting, tests, and builds
 	$(MAKE) format-check

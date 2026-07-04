@@ -1,0 +1,200 @@
+name: Release macOS Apple Silicon
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-macos-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release-macos:
+    name: Build and publish macOS Apple Silicon release
+    runs-on: macos-14
+
+    env:
+      HUSKY: 0
+
+    steps:
+      - name: Check out pushed tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Verify Apple Silicon runner
+        run: |
+          set -euo pipefail
+          arch="$(uname -m)"
+          echo "GitHub Actions runner architecture: ${arch}"
+          if [ "${arch}" != "arm64" ]; then
+            echo "::error::This workflow must run on an Apple Silicon macOS runner. The selected runner reported '${arch}', so refusing to build an artifact labelled macos-arm64."
+            echo "::error::Use a GitHub-hosted macOS arm64 runner label supported by this repository type, or a self-hosted macOS arm64 runner."
+            exit 1
+          fi
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+
+      - name: Install root tooling dependencies
+        run: npm ci
+
+      - name: Install frontend dependencies
+        run: npm --prefix frontend ci
+
+      - name: Validate tag and Maven version
+        id: version
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          if ! printf '%s\n' "${tag}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$'; then
+            echo "::error::Release tags must use semantic version format such as v0.1.0 or v0.1.0-beta.1."
+            exit 1
+          fi
+
+          release_version="${tag#v}"
+          base_version="${release_version%%-*}"
+          maven_version="$(./mvnw -q -DforceStdout help:evaluate -Dexpression=project.version)"
+
+          if [ "${maven_version}" != "${release_version}" ] \
+            && [ "${maven_version}" != "${release_version}-SNAPSHOT" ] \
+            && [ "${maven_version}" != "${base_version}-SNAPSHOT" ]; then
+            echo "::error::Maven project version '${maven_version}' is not compatible with release tag '${tag}'. Expected '${release_version}', '${release_version}-SNAPSHOT', or '${base_version}-SNAPSHOT'."
+            exit 1
+          fi
+
+          prerelease=false
+          if printf '%s\n' "${release_version}" | grep -q -- '-'; then
+            prerelease=true
+          fi
+
+          {
+            echo "release_version=${release_version}"
+            echo "release_asset_name=Memoria-Vault-${release_version}-macos-arm64.dmg"
+            echo "prerelease=${prerelease}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Run quality checks
+        run: make verify
+
+      - name: Build production JAR
+        run: make build-production
+
+      - name: Validate bundled FFmpeg
+        run: make check-bundled-ffmpeg
+
+      - name: Build macOS app and DMG
+        run: make package-macos
+
+      - name: Inspect bundled FFmpeg
+        run: make inspect-bundled-ffmpeg
+
+      - name: Inspect macOS app
+        run: make inspect-macos-app
+
+      - name: Prepare release assets
+        id: assets
+        run: |
+          set -euo pipefail
+          release_asset_name="${{ steps.version.outputs.release_asset_name }}"
+          dmg_count="$(find dist/installers -maxdepth 1 -type f -name '*.dmg' | wc -l | tr -d ' ')"
+          if [ "${dmg_count}" != "1" ]; then
+            echo "::error::Expected exactly one generated DMG in dist/installers, found ${dmg_count}."
+            find dist/installers -maxdepth 1 -type f -print
+            exit 1
+          fi
+
+          generated_dmg="$(find dist/installers -maxdepth 1 -type f -name '*.dmg' -print | head -n 1)"
+          final_dmg="dist/installers/${release_asset_name}"
+          if [ "${generated_dmg}" != "${final_dmg}" ]; then
+            mv "${generated_dmg}" "${final_dmg}"
+          fi
+
+          (
+            cd dist/installers
+            shasum -a 256 "${release_asset_name}" > "${release_asset_name}.sha256"
+          )
+
+          {
+            echo "dmg=${final_dmg}"
+            echo "checksum=${final_dmg}.sha256"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Write release notes introduction
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.release_version }}"
+          cat > release-notes-intro.md <<EOF
+          ## Memoria Vault for macOS Apple Silicon
+
+          Memoria Vault runs locally on your Mac. Your compatible exported memories are not uploaded to a cloud service.
+
+          This application is an independent, open-source local tool and is not affiliated, associated, authorized, endorsed by, or in any way officially connected with Snap Inc. or Snapchat.
+
+          ### Installation
+
+          1. Download \`Memoria-Vault-${version}-macos-arm64.dmg\`.
+          2. Open the DMG.
+          3. Drag Memoria Vault to Applications.
+          4. Open Memoria Vault.
+          5. Choose your exported archive folder and start a local scan.
+
+          ### Requirements
+
+          - macOS on Apple Silicon
+          - A compatible exported memories archive folder
+
+          ### Known limitations
+
+          - This build is for Apple Silicon only.
+          - The application is not signed or notarized yet, so macOS may show a security warning.
+
+          EOF
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          prerelease_flag=""
+          if [ "${PRERELEASE}" = "true" ]; then
+            prerelease_flag="--prerelease"
+          fi
+
+          gh release create "${GITHUB_REF_NAME}" \
+            "${{ steps.assets.outputs.dmg }}" \
+            "${{ steps.assets.outputs.checksum }}" \
+            --title "Memoria Vault ${GITHUB_REF_NAME}" \
+            --notes-file release-notes-intro.md \
+            --generate-notes \
+            ${prerelease_flag}
+
+      - name: Upload packaging artifacts for troubleshooting
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: memoria-vault-macos-packaging-${{ github.ref_name }}
+          path: |
+            dist/app/Memoria Vault.app
+            dist/installers/
+          if-no-files-found: ignore
+          retention-days: 7
