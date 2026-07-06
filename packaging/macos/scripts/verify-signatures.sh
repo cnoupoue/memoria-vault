@@ -3,7 +3,9 @@ set -euo pipefail
 
 APP_PATH="${1:-dist/app/Memoria Vault.app}"
 EXPECTED_IDENTITY="${APPLE_DEVELOPER_ID_APPLICATION:-}"
+EXPECTED_TEAM="${APPLE_TEAM_ID:-}"
 DIAGNOSTIC="${MACOS_SIGNING_DIAGNOSTIC:-0}"
+SUMMARY_DIR="${MACOS_SIGNING_SUMMARY_DIR:-}"
 
 if [ "$(uname -s)" != "Darwin" ]; then
   echo "macOS signature verification requires macOS." >&2
@@ -15,6 +17,15 @@ if [ ! -d "$APP_PATH" ]; then
   exit 1
 fi
 
+if [ -z "$EXPECTED_TEAM" ] && [ -n "$EXPECTED_IDENTITY" ]; then
+  EXPECTED_TEAM="$(printf '%s\n' "$EXPECTED_IDENTITY" | sed -n 's/.*(\([^()]*\)).*/\1/p')"
+fi
+
+if [ -z "$EXPECTED_IDENTITY" ] || [ -z "$EXPECTED_TEAM" ]; then
+  echo "APPLE_DEVELOPER_ID_APPLICATION and APPLE_TEAM_ID, or an identity containing a Team ID, are required for release signature verification." >&2
+  exit 2
+fi
+
 require_tool() {
   command -v "$1" >/dev/null 2>&1 || {
     echo "Missing required tool: $1" >&2
@@ -22,9 +33,22 @@ require_tool() {
   }
 }
 
-for tool in find file codesign otool sort awk; do
+for tool in find file codesign otool sort jar mktemp; do
   require_tool "$tool"
 done
+
+if [ -n "$SUMMARY_DIR" ]; then
+  mkdir -p "$SUMMARY_DIR"
+fi
+
+WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/memoriavault-verify-signatures.XXXXXX")"
+FOUND_LIST="$WORK_DIR/found.txt"
+SORTED_LIST="$WORK_DIR/sorted.txt"
+SIGNING_SUMMARY="$WORK_DIR/signing-metadata-summary.txt"
+RUNTIME_SUMMARY="$WORK_DIR/runtime-signing-summary.txt"
+SQLITE_SUMMARY="$WORK_DIR/sqlite-native-signing-summary.txt"
+FFMPEG_SUMMARY="$WORK_DIR/ffmpeg-signing-summary.txt"
+trap 'rm -rf "$WORK_DIR"' EXIT
 
 is_macho() {
   file "$1" 2>/dev/null | grep -Eq 'Mach-O|universal binary'
@@ -42,136 +66,255 @@ detail_path() {
   fi
 }
 
-team_identifier() {
-  codesign -dv --verbose=4 "$1" 2>&1 | sed -n 's/^TeamIdentifier=//p' | head -n 1
-}
-
-is_adhoc() {
-  codesign -dv --verbose=4 "$1" 2>&1 | grep -Eq '^Signature=adhoc$|flags=.*adhoc'
-}
-
 dependency_lines() {
   otool -L "$1" 2>/dev/null | sed '1d; s/^[[:space:]]*//; s/ (.*$//'
 }
 
-EXPECTED_TEAM=""
-if [ -n "$EXPECTED_IDENTITY" ]; then
-  EXPECTED_TEAM="$(printf '%s\n' "$EXPECTED_IDENTITY" | sed -n 's/.*(\([^()]*\)).*/\1/p')"
-fi
+metadata_value() {
+  key="$1"
+  file="$2"
+  sed -n "s/^${key}=//p" "$file" | head -n 1
+}
 
-FOUND_PATHS_FILE="$(mktemp "${TMPDIR:-/tmp}/memoriavault-verify-paths.XXXXXX")"
-SORTED_PATHS_FILE="$(mktemp "${TMPDIR:-/tmp}/memoriavault-verify-sorted.XXXXXX")"
-trap 'rm -f "$FOUND_PATHS_FILE" "$SORTED_PATHS_FILE"' EXIT
+metadata_authorities() {
+  file="$1"
+  sed -n 's/^Authority=//p' "$file"
+}
 
-find "$APP_PATH" -type f -print0 | while IFS= read -r -d '' candidate; do
-  if is_macho "$candidate"; then
-    printf '%s\0' "$candidate"
-  fi
-done >"$FOUND_PATHS_FILE"
+record_line() {
+  line="$1"
+  printf '%s\n' "$line" >>"$SIGNING_SUMMARY"
+}
 
-tr '\0' '\n' <"$FOUND_PATHS_FILE" | awk '
-  length($0) > 0 {
-    path = $0
-    depth = gsub("/", "/", path)
-    printf "%06d\t%s\n", 999999 - depth, $0
-  }
-' | sort | sed 's/^[0-9][0-9][0-9][0-9][0-9][0-9]	//' >"$SORTED_PATHS_FILE"
-
-TOTAL=0
-SIGNED=0
-ERRORS=0
-UNSAFE_DEPS=0
-FFMPEG_STATUS="missing"
-APP_STATUS="not checked"
-TEAM_STATUS="not checked"
-FIRST_TEAM=""
+record_category() {
+  category="$1"
+  line="$2"
+  case "$category" in
+    runtime) printf '%s\n' "$line" >>"$RUNTIME_SUMMARY" ;;
+    sqlite) printf '%s\n' "$line" >>"$SQLITE_SUMMARY" ;;
+    ffmpeg) printf '%s\n' "$line" >>"$FFMPEG_SUMMARY" ;;
+  esac
+}
 
 record_error() {
   ERRORS=$((ERRORS + 1))
   echo "ERROR: $*" >&2
 }
 
-verify_one() {
+classify() {
+  label="$1"
+  case "$label" in
+    Contents/app/ffmpeg/ffmpeg) printf '%s' "ffmpeg" ;;
+    *"/org/sqlite/native/Mac/"*"/libsqlitejdbc.dylib") printf '%s' "sqlite" ;;
+    Contents/runtime/*) printf '%s' "runtime" ;;
+    *) printf '%s' "general" ;;
+  esac
+}
+
+verify_macho_metadata() {
   path="$1"
-  rel="$(detail_path "$path")"
+  label="$2"
+  category="$(classify "$label")"
+  meta="$WORK_DIR/meta-$TOTAL.txt"
+
   TOTAL=$((TOTAL + 1))
 
   if ! codesign --verify --strict --verbose=2 "$path" >/dev/null 2>&1; then
-    record_error "Unsigned or invalid nested code: $rel"
+    record_error "Unsigned or invalid code: $label"
     return
   fi
 
-  if is_adhoc "$path"; then
-    record_error "Ad-hoc signature is not acceptable for release: $rel"
+  if ! codesign -dv --verbose=4 "$path" >"$meta" 2>&1; then
+    record_error "Unable to inspect code signature metadata: $label"
     return
   fi
 
-  SIGNED=$((SIGNED + 1))
+  identifier="$(metadata_value Identifier "$meta")"
+  team="$(metadata_value TeamIdentifier "$meta")"
+  timestamp="$(metadata_value Timestamp "$meta")"
+  runtime_version="$(metadata_value Runtime "$meta")"
+  flags_line="$(grep -E '^CodeDirectory .* flags=' "$meta" | head -n 1 || true)"
+  authorities="$(metadata_authorities "$meta")"
 
-  team="$(team_identifier "$path")"
-  if [ -n "$team" ] && [ "$team" != "not set" ]; then
-    if [ -z "$FIRST_TEAM" ]; then
-      FIRST_TEAM="$team"
-    elif [ "$team" != "$FIRST_TEAM" ]; then
-      TEAM_STATUS="mismatch"
-      record_error "Team Identifier mismatch on nested code: $rel"
-    fi
+  short_flags="${flags_line##* flags=}"
+  [ "$short_flags" != "$flags_line" ] || short_flags="-"
+  [ -n "$identifier" ] || identifier="-"
+  [ -n "$team" ] || team="-"
+  [ -n "$timestamp" ] || timestamp="-"
+  [ -n "$runtime_version" ] || runtime_version="-"
 
-    if [ -n "$EXPECTED_TEAM" ] && [ "$team" != "$EXPECTED_TEAM" ]; then
-      TEAM_STATUS="mismatch"
-      record_error "Unexpected Team Identifier on nested code: $rel"
-    fi
+  record_line "$label"
+  record_line "  Identifier: $identifier"
+  printf '%s\n' "$authorities" | sed 's/^/  Authority: /' >>"$SIGNING_SUMMARY"
+  record_line "  TeamIdentifier: $team"
+  record_line "  Timestamp: $timestamp"
+  record_line "  Runtime Version: $runtime_version"
+  record_line "  CodeDirectory flags: $short_flags"
+
+  if [ "$category" != "general" ]; then
+    record_category "$category" "$label"
+    record_category "$category" "  TeamIdentifier: $team"
+    record_category "$category" "  Timestamp: $timestamp"
+    record_category "$category" "  CodeDirectory flags: $short_flags"
+  fi
+
+  if printf '%s\n' "$authorities" | grep -Eq '^$|^Authority=$'; then
+    record_error "Missing Developer ID authority: $label"
+  elif ! printf '%s\n' "$authorities" | grep -Fq "$EXPECTED_IDENTITY"; then
+    record_error "Developer ID authority mismatch: $label"
+  else
+    DEVELOPER_ID_VERIFIED=$((DEVELOPER_ID_VERIFIED + 1))
+  fi
+
+  if [ "$team" != "$EXPECTED_TEAM" ]; then
+    record_error "Team Identifier mismatch: $label"
+  else
+    TEAM_VERIFIED=$((TEAM_VERIFIED + 1))
+  fi
+
+  if [ "$timestamp" = "-" ]; then
+    record_error "Missing secure timestamp: $label"
+  else
+    TIMESTAMP_VERIFIED=$((TIMESTAMP_VERIFIED + 1))
+  fi
+
+  if grep -Eq '^Signature=adhoc$|flags=.*adhoc' "$meta"; then
+    ADHOC=$((ADHOC + 1))
+    record_error "Ad hoc signature detected: $label"
+  fi
+
+  if printf '%s\n' "$short_flags" | grep -Eq 'runtime|0x[0-9a-fA-F]*10000'; then
+    RUNTIME_VERIFIED=$((RUNTIME_VERIFIED + 1))
+  else
+    record_error "Missing Hardened Runtime flag: $label"
   fi
 
   unsafe="$(dependency_lines "$path" | grep -E '^(/opt/homebrew/|/usr/local/Cellar/|/Users/|/private/var/|/Volumes/)' || true)"
   if [ -n "$unsafe" ]; then
     UNSAFE_DEPS=$((UNSAFE_DEPS + 1))
-    record_error "Unsafe external dependency detected in $rel"
+    record_error "Unsafe external dependency detected in $label"
     if [ "$DIAGNOSTIC" = "1" ]; then
       printf '%s\n' "$unsafe" >&2
     fi
   fi
+
+  case "$category" in
+    ffmpeg) FFMPEG_STATUS="Developer ID verified" ;;
+    sqlite) SQLITE_VERIFIED=$((SQLITE_VERIFIED + 1)) ;;
+    runtime) RUNTIME_FILES=$((RUNTIME_FILES + 1)) ;;
+  esac
 }
 
-while IFS= read -r binary; do
-  verify_one "$binary"
-done <"$SORTED_PATHS_FILE"
+extract_and_record_sqlite_dylibs() {
+  app_jar="$1"
+  app_label="$2"
+  app_extract="$WORK_DIR/app-jar"
+  mkdir -p "$app_extract"
+  (
+    cd "$app_extract"
+    jar xf "$app_jar"
+  )
 
-FFMPEG_PATH="$APP_PATH/Contents/app/ffmpeg/ffmpeg"
-if [ -f "$FFMPEG_PATH" ]; then
-  if codesign --verify --strict --verbose=2 "$FFMPEG_PATH" >/dev/null 2>&1 && ! is_adhoc "$FFMPEG_PATH"; then
-    FFMPEG_STATUS="signed-valid"
-  else
-    FFMPEG_STATUS="invalid"
-    record_error "Bundled FFmpeg signature failed strict verification."
+  find "$app_extract/BOOT-INF/lib" -type f -name 'sqlite-jdbc-*.jar' 2>/dev/null | while IFS= read -r sqlite_jar; do
+    sqlite_label="${sqlite_jar#"$app_extract/"}"
+    sqlite_extract="$WORK_DIR/sqlite-$(basename "$sqlite_jar" .jar)"
+    mkdir -p "$sqlite_extract"
+    (
+      cd "$sqlite_extract"
+      jar xf "$sqlite_jar"
+    )
+    find "$sqlite_extract/org/sqlite/native/Mac" -type f -name '*.dylib' 2>/dev/null | while IFS= read -r dylib; do
+      if is_macho "$dylib"; then
+        rel="${dylib#"$sqlite_extract/"}"
+        printf '%s\t%s\n' "$dylib" "$app_label/$sqlite_label/$rel" >>"$FOUND_LIST"
+      fi
+    done
+  done
+}
+
+: >"$FOUND_LIST"
+: >"$SIGNING_SUMMARY"
+: >"$RUNTIME_SUMMARY"
+: >"$SQLITE_SUMMARY"
+: >"$FFMPEG_SUMMARY"
+
+find "$APP_PATH" -type f -print0 | while IFS= read -r -d '' candidate; do
+  if is_macho "$candidate"; then
+    printf '%s\t%s\n' "$candidate" "$(safe_path "$candidate")" >>"$FOUND_LIST"
+  elif printf '%s\n' "$candidate" | grep -Eq '\.jar$'; then
+    extract_and_record_sqlite_dylibs "$candidate" "$(safe_path "$candidate")"
   fi
-fi
+done
 
-if codesign --verify --deep --strict --verbose=4 "$APP_PATH" >/dev/null 2>&1; then
-  APP_STATUS="signed-valid"
+awk -F '\t' '
+  NF >= 2 {
+    path = $1
+    label = $2
+    depth = gsub("/", "/", label)
+    printf "%06d\t%s\t%s\n", 999999 - depth, path, label
+  }
+' "$FOUND_LIST" | sort | cut -f2- >"$SORTED_LIST"
+
+TOTAL=0
+DEVELOPER_ID_VERIFIED=0
+TIMESTAMP_VERIFIED=0
+RUNTIME_VERIFIED=0
+TEAM_VERIFIED=0
+ADHOC=0
+ERRORS=0
+UNSAFE_DEPS=0
+SQLITE_VERIFIED=0
+RUNTIME_FILES=0
+FFMPEG_STATUS="missing"
+APP_STATUS="not checked"
+
+while IFS="$(printf '\t')" read -r path label; do
+  [ -n "$path" ] || continue
+  verify_macho_metadata "$path" "$label"
+done <"$SORTED_LIST"
+
+APP_META="$WORK_DIR/app-meta.txt"
+if codesign --verify --deep --strict --verbose=4 "$APP_PATH" >/dev/null 2>&1 && codesign -dv --verbose=4 "$APP_PATH" >"$APP_META" 2>&1; then
+  app_team="$(metadata_value TeamIdentifier "$APP_META")"
+  app_timestamp="$(metadata_value Timestamp "$APP_META")"
+  app_authorities="$(metadata_authorities "$APP_META")"
+  app_flags="$(grep -E '^CodeDirectory .* flags=' "$APP_META" | head -n 1 || true)"
+  record_line "$(basename "$APP_PATH")"
+  printf '%s\n' "$app_authorities" | sed 's/^/  Authority: /' >>"$SIGNING_SUMMARY"
+  record_line "  TeamIdentifier: ${app_team:-"-"}"
+  record_line "  Timestamp: ${app_timestamp:-"-"}"
+  record_line "  CodeDirectory flags: ${app_flags##* flags=}"
+  if printf '%s\n' "$app_authorities" | grep -Fq "$EXPECTED_IDENTITY" && [ "$app_team" = "$EXPECTED_TEAM" ] && [ -n "$app_timestamp" ] && printf '%s\n' "$app_flags" | grep -Eq 'runtime|0x[0-9a-fA-F]*10000' && ! grep -Eq '^Signature=adhoc$|flags=.*adhoc' "$APP_META"; then
+    APP_STATUS="Developer ID verified"
+  else
+    APP_STATUS="invalid"
+    record_error "Final app bundle is missing required Developer ID metadata."
+  fi
 else
   APP_STATUS="invalid"
-  record_error "Final app bundle signature failed strict verification."
+  record_error "Final app bundle signature verification failed."
 fi
 
-if [ "$TEAM_STATUS" != "mismatch" ]; then
-  if [ -n "$EXPECTED_TEAM" ] && [ -n "$FIRST_TEAM" ]; then
-    TEAM_STATUS="consistent with expected Team Identifier"
-  elif [ -n "$FIRST_TEAM" ]; then
-    TEAM_STATUS="consistent"
-  else
-    TEAM_STATUS="unavailable"
-  fi
+echo "macOS notarization-ready signature verification summary"
+echo "  Mach-O files detected:          $TOTAL"
+echo "  Developer ID verified:         $DEVELOPER_ID_VERIFIED"
+echo "  Secure timestamp verified:     $TIMESTAMP_VERIFIED"
+echo "  Hardened Runtime verified:     $RUNTIME_VERIFIED"
+echo "  Expected Team ID verified:     $TEAM_VERIFIED"
+echo "  Ad hoc signatures detected:    $ADHOC"
+echo "  Unsafe dependencies detected:  $UNSAFE_DEPS"
+echo "  FFmpeg:                        $FFMPEG_STATUS"
+echo "  Java runtime files verified:   $RUNTIME_FILES"
+echo "  SQLite native libraries:       $SQLITE_VERIFIED"
+echo "  App bundle:                    $APP_STATUS"
+
+if [ -n "$SUMMARY_DIR" ]; then
+  cp "$SIGNING_SUMMARY" "$SUMMARY_DIR/signing-metadata-summary.txt"
+  cp "$RUNTIME_SUMMARY" "$SUMMARY_DIR/runtime-signing-summary.txt"
+  cp "$SQLITE_SUMMARY" "$SUMMARY_DIR/sqlite-native-signing-summary.txt"
+  cp "$FFMPEG_SUMMARY" "$SUMMARY_DIR/ffmpeg-signing-summary.txt"
 fi
 
-echo "macOS signature verification summary"
-echo "  Mach-O files detected: $TOTAL"
-echo "  Signed successfully:   $SIGNED"
-echo "  FFmpeg:                $FFMPEG_STATUS"
-echo "  App bundle:            $APP_STATUS"
-echo "  Team ID consistency:   $TEAM_STATUS"
-echo "  Unsafe dependencies:   $UNSAFE_DEPS"
-
-if [ "$ERRORS" -gt 0 ] || [ "$TOTAL" -eq 0 ] || [ "$UNSAFE_DEPS" -gt 0 ] || [ "$FFMPEG_STATUS" != "signed-valid" ] || [ "$APP_STATUS" != "signed-valid" ]; then
+if [ "$ERRORS" -gt 0 ] || [ "$TOTAL" -eq 0 ] || [ "$DEVELOPER_ID_VERIFIED" -ne "$TOTAL" ] || [ "$TIMESTAMP_VERIFIED" -ne "$TOTAL" ] || [ "$RUNTIME_VERIFIED" -ne "$TOTAL" ] || [ "$TEAM_VERIFIED" -ne "$TOTAL" ] || [ "$ADHOC" -ne 0 ] || [ "$UNSAFE_DEPS" -ne 0 ] || [ "$FFMPEG_STATUS" != "Developer ID verified" ] || [ "$SQLITE_VERIFIED" -lt 2 ] || [ "$APP_STATUS" != "Developer ID verified" ]; then
   exit 1
 fi

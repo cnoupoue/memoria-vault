@@ -36,9 +36,9 @@ MACOS_DMG_SHA256_PATH ?= $(MACOS_DMG_PATH).sha256
 	lint lint-frontend lint-branding lint-fix test test-backend test-frontend test-packaging \
 	build build-backend build-frontend build-production package-jar \
 	run-production verify-production inspect-jar \
-	package-macos-app sign-macos-app verify-macos-signatures \
+	package-macos-app postprocess-macos-sqlite-native-libs sign-macos-app verify-macos-signatures \
 	package-macos-dmg package-macos-dmg-from-signed-app sign-macos-dmg \
-	notarize-macos-dmg staple-macos-dmg verify-macos-notarization \
+	verify-macos-dmg-signatures notarize-macos-dmg staple-macos-dmg verify-macos-notarization \
 	package-macos-release package-macos checksum-macos-dmg run-macos-app \
 	package-windows package-linux \
 	inspect-macos-app clean-packaging generate-macos-icon prepare-macos-input \
@@ -54,7 +54,7 @@ help: ## Show available commands
 	@echo ""
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
 	@echo ""
-	@echo "Signed release path: package-macos-app -> sign-macos-app -> verify-macos-signatures -> package-macos-dmg-from-signed-app -> sign-macos-dmg -> notarize-macos-dmg -> staple-macos-dmg -> verify-macos-notarization"
+	@echo "Signed release path: package-macos-app -> postprocess-macos-sqlite-native-libs -> sign-macos-app -> verify-macos-signatures -> package-macos-dmg-from-signed-app -> sign-macos-dmg -> verify-macos-dmg-signatures -> notarize-macos-dmg -> staple-macos-dmg -> verify-macos-notarization"
 	@echo "Development packaging: package-macos builds an unsigned local DMG and is not a release artifact."
 	@echo ""
 
@@ -236,6 +236,10 @@ package-macos-app: prepare-bundled-ffmpeg generate-macos-icon check-macos-arm64 
 		--icon "$(MACOS_ICON)" \
 		--jlink-options "$(JLINK_OPTIONS)"
 
+postprocess-macos-sqlite-native-libs: check-macos ## Sign SQLite native libraries embedded inside the packaged application JAR
+	@test -d "$(MACOS_APP_PATH)" || { echo "Missing app bundle: $(MACOS_APP_PATH). Run 'make package-macos-app' first."; exit 1; }
+	@packaging/macos/scripts/sign-sqlite-native-libs.sh "$(MACOS_APP_PATH)"
+
 sign-macos-app: check-macos ## Sign nested Mach-O code and the final existing macOS app bundle
 	@test -d "$(MACOS_APP_PATH)" || { echo "Missing app bundle: $(MACOS_APP_PATH). Run 'make package-macos-app' first."; exit 1; }
 	@packaging/macos/scripts/sign-app.sh "$(MACOS_APP_PATH)"
@@ -281,6 +285,10 @@ sign-macos-dmg: check-macos ## Sign the existing DMG with Developer ID
 	fi
 	@codesign --verify --strict --verbose=2 "$(MACOS_DMG_PATH)"
 
+verify-macos-dmg-signatures: check-macos ## Mount the DMG and verify the app inside before notarization
+	@test -f "$(MACOS_DMG_PATH)" || { echo "Missing signed DMG: $(MACOS_DMG_PATH). Run 'make sign-macos-dmg' first."; exit 1; }
+	@packaging/macos/scripts/verify-dmg-signatures.sh "$(MACOS_DMG_PATH)"
+
 notarize-macos-dmg: check-macos ## Submit the already signed DMG and wait for Apple notarization acceptance
 	@test -f "$(MACOS_DMG_PATH)" || { echo "Missing signed DMG: $(MACOS_DMG_PATH). Run 'make sign-macos-dmg' first."; exit 1; }
 	@MACOS_NOTARIZATION_ARTIFACT_DIR="$(MACOS_NOTARIZATION_ARTIFACT_DIR)" packaging/macos/scripts/notarize-dmg.sh submit "$(MACOS_DMG_PATH)"
@@ -297,7 +305,7 @@ checksum-macos-dmg: ## Generate SHA-256 checksum for the final notarized DMG
 	@test -f "$(MACOS_DMG_PATH)" || { echo "Missing DMG: $(MACOS_DMG_PATH)."; exit 1; }
 	shasum -a 256 "$(MACOS_DMG_PATH)" > "$(MACOS_DMG_SHA256_PATH)"
 
-package-macos-release: package-macos-app sign-macos-app verify-macos-signatures package-macos-dmg-from-signed-app sign-macos-dmg notarize-macos-dmg staple-macos-dmg verify-macos-notarization checksum-macos-dmg ## Build, sign, notarize, staple, verify, and checksum the macOS release DMG
+package-macos-release: package-macos-app postprocess-macos-sqlite-native-libs sign-macos-app verify-macos-signatures package-macos-dmg-from-signed-app sign-macos-dmg verify-macos-dmg-signatures notarize-macos-dmg staple-macos-dmg verify-macos-notarization checksum-macos-dmg ## Build, sign, notarize, staple, verify, and checksum the macOS release DMG
 
 package-macos: package-macos-dmg ## Build an unsigned local macOS app image and development DMG
 

@@ -31,31 +31,35 @@ The release pipeline is intentionally split into deterministic stages:
 ```text
 1. Build production JAR
 2. Build unsigned macOS app image
-3. Discover embedded Mach-O binaries
-4. Sign nested executable code from inside out
-5. Sign bundled FFmpeg explicitly
-6. Sign Java runtime native executables/libraries where needed
-7. Sign the final .app bundle
-8. Verify every nested signature
-9. Create DMG from the already signed .app
-10. Sign the DMG
-11. Submit DMG to Apple notarization
-12. Wait for final notarization status
-13. Retrieve Apple log automatically when notarization fails
-14. Staple the notarization ticket to the DMG
-15. Validate stapling and Gatekeeper assessment
-16. Generate SHA-256 checksum
-17. Publish the notarized DMG and checksum to GitHub Release
+3. Sign native SQLite libraries embedded inside `sqlite-jdbc-*.jar`
+4. Discover embedded Mach-O binaries
+5. Sign nested executable code from inside out
+6. Sign bundled FFmpeg explicitly
+7. Sign Java runtime native executables/libraries where needed
+8. Sign the final .app bundle
+9. Verify Developer ID authority, Team ID, timestamp, Hardened Runtime, and non-ad-hoc metadata
+10. Create DMG from the already signed .app
+11. Sign the DMG
+12. Mount the DMG and verify the app inside with the same strict metadata checks
+13. Submit DMG to Apple notarization
+14. Wait for final notarization status
+15. Retrieve Apple log automatically when notarization fails
+16. Staple the notarization ticket to the DMG
+17. Validate stapling and Gatekeeper assessment
+18. Generate SHA-256 checksum
+19. Publish the notarized DMG and checksum to GitHub Release
 ```
 
 The Makefile targets are:
 
 ```text
 package-macos-app
+postprocess-macos-sqlite-native-libs
 sign-macos-app
 verify-macos-signatures
 package-macos-dmg-from-signed-app
 sign-macos-dmg
+verify-macos-dmg-signatures
 notarize-macos-dmg
 staple-macos-dmg
 verify-macos-notarization
@@ -63,7 +67,14 @@ package-macos-release
 ```
 
 `package-macos-dmg-from-signed-app` verifies the existing app signature before creating the DMG and
-does not invoke `package-macos-app`.
+does not invoke `package-macos-app`. Verification inspects `codesign -dv --verbose=4` metadata, not
+only `codesign --verify`, and fails on missing Developer ID authority, Team ID mismatch, missing
+secure timestamp, missing Hardened Runtime, or ad-hoc signatures.
+
+Apple notarization scans native libraries embedded inside nested dependency JARs. The release path
+therefore signs `org/sqlite/native/Mac/*/libsqlitejdbc.dylib` inside the packaged
+`sqlite-jdbc-*.jar`, rebuilds the dependency JAR, replaces it inside the packaged application JAR,
+and verifies the modified archive before signing the outer `.app`.
 
 Required GitHub secrets:
 
@@ -106,6 +117,9 @@ locally:
 ```bash
 make clean-packaging
 make package-macos-app
+APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Example Name (TEAMID)" \
+APPLE_TEAM_ID="TEAMID" \
+  make postprocess-macos-sqlite-native-libs
 APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Example Name (TEAMID)" \
   make sign-macos-app
 make verify-macos-signatures
@@ -168,16 +182,19 @@ Strict mode:
 - fails if any detected Mach-O executable or native library is unsigned;
 - fails if any signature is invalid;
 - fails if any nested binary still uses an ad-hoc signature instead of a Developer ID signature;
-- checks signed nested binaries against `APPLE_DEVELOPER_ID_APPLICATION` when that optional
-  environment variable is set;
+- requires `Authority` to contain `APPLE_DEVELOPER_ID_APPLICATION`;
+- requires `TeamIdentifier` to match `APPLE_TEAM_ID`, or the Team ID parsed from the signing identity;
+- requires a secure timestamp;
+- requires the Hardened Runtime `runtime` flag for Mach-O code;
 - verifies bundled FFmpeg with `codesign --verify --strict`;
+- verifies native SQLite libraries embedded inside the packaged `sqlite-jdbc-*.jar`;
 - rejects dynamic dependencies that point to Homebrew, user-local, temporary, or mounted-volume
   paths;
 - verifies the final app bundle with `codesign --verify --deep --strict --verbose=4`.
 
 `verify-macos-signatures` is expected to fail until every nested binary and the final app bundle are
-signed with a Developer ID Application certificate. Its normal CI summary does not print absolute
-local paths.
+signed with a Developer ID Application certificate, secure timestamp, and Hardened Runtime metadata.
+Its normal CI summary does not print absolute local paths.
 
 Optional identity check:
 

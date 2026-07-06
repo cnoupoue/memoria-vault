@@ -173,6 +173,14 @@ jobs:
               exit 1
             }
 
+      - name: Sign embedded SQLite native code
+        env:
+          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          KEYCHAIN_PATH: ${{ runner.temp }}/memoria-vault-signing.keychain-db
+          MACOS_SIGNING_SUMMARY_DIR: dist/notarization
+        run: make postprocess-macos-sqlite-native-libs
+
       - name: Sign embedded code
         env:
           APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
@@ -182,6 +190,8 @@ jobs:
       - name: Verify app signatures
         env:
           APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MACOS_SIGNING_SUMMARY_DIR: dist/notarization
         run: |
           set -euo pipefail
           mkdir -p "${MACOS_NOTARIZATION_ARTIFACT_DIR}"
@@ -189,6 +199,8 @@ jobs:
 
       - name: Create signed DMG
         env:
+          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           MACOS_DMG_PATH: ${{ steps.version.outputs.release_dmg }}
         run: make package-macos-dmg-from-signed-app
 
@@ -203,6 +215,14 @@ jobs:
           mkdir -p "${MACOS_NOTARIZATION_ARTIFACT_DIR}"
           codesign --verify --strict --verbose=2 "${MACOS_DMG_PATH}" >/dev/null
           printf '%s\n' "DMG signature: signed-valid" > "${MACOS_NOTARIZATION_ARTIFACT_DIR}/dmg-signature-verification.txt"
+
+      - name: Verify mounted DMG signatures
+        env:
+          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MACOS_DMG_PATH: ${{ steps.version.outputs.release_dmg }}
+          MACOS_SIGNING_SUMMARY_DIR: dist/notarization
+        run: make verify-macos-dmg-signatures
 
       - name: Notarize macOS DMG
         env:

@@ -255,17 +255,19 @@ For signed releases, the app and DMG stages are separate so the signed app is no
 
 ```text
 package-macos-app
+postprocess-macos-sqlite-native-libs
 sign-macos-app
 verify-macos-signatures
 package-macos-dmg-from-signed-app
 sign-macos-dmg
+verify-macos-dmg-signatures
 notarize-macos-dmg
 staple-macos-dmg
 verify-macos-notarization
 package-macos-release
 ```
 
-Release order is: build the production JAR, build the unsigned app image, sign nested Mach-O code from inside out, sign FFmpeg explicitly, sign Java runtime native code where needed, sign the final app bundle, verify signatures, create the DMG from the signed app, sign the DMG, notarize, staple, validate, generate the checksum, then publish.
+Release order is: build the production JAR, build the unsigned app image, sign native SQLite libraries embedded inside the packaged `sqlite-jdbc` dependency JAR, sign nested Mach-O code from inside out, sign FFmpeg explicitly, sign Java runtime native code where needed, sign the final app bundle, verify Developer ID metadata, create the DMG from the signed app, sign the DMG, mount the DMG and verify the app inside, notarize, staple, validate, generate the checksum, then publish.
 
 Inspect every embedded Mach-O binary in the app bundle:
 
@@ -282,13 +284,16 @@ Strict release verification is separate:
 make verify-macos-signatures
 ```
 
-`verify-macos-signatures` is intended for signed Developer ID builds. It rejects unsigned or invalid nested binaries, unsafe Homebrew or user-local dynamic dependencies, Team Identifier mismatches when available, and verifies the final `.app` bundle with strict deep code-signature verification.
+`verify-macos-signatures` is intended for signed Developer ID builds. It rejects unsigned or invalid nested binaries, ad-hoc signatures, missing Developer ID authority, missing secure timestamps, missing Hardened Runtime flags, unsafe Homebrew or user-local dynamic dependencies, Team Identifier mismatches, unsigned SQLite native libraries embedded inside the packaged `sqlite-jdbc` JAR, and invalid final `.app` bundle metadata.
 
 Local signing smoke test:
 
 ```bash
 make clean-packaging
 make package-macos-app
+APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Example Name (TEAMID)" \
+APPLE_TEAM_ID="TEAMID" \
+  make postprocess-macos-sqlite-native-libs
 APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Example Name (TEAMID)" \
   make sign-macos-app
 make verify-macos-signatures

@@ -294,14 +294,16 @@ The signed release path is:
 
 ```text
 1. make package-macos-app
-2. make sign-macos-app
-3. make verify-macos-signatures
-4. make package-macos-dmg-from-signed-app
-5. make sign-macos-dmg
-6. make notarize-macos-dmg
-7. make staple-macos-dmg
-8. make verify-macos-notarization
-9. make checksum-macos-dmg
+2. make postprocess-macos-sqlite-native-libs
+3. make sign-macos-app
+4. make verify-macos-signatures
+5. make package-macos-dmg-from-signed-app
+6. make sign-macos-dmg
+7. make verify-macos-dmg-signatures
+8. make notarize-macos-dmg
+9. make staple-macos-dmg
+10. make verify-macos-notarization
+11. make checksum-macos-dmg
 ```
 
 `package-macos-dmg-from-signed-app` must only consume the already signed app image. It must not
@@ -324,10 +326,11 @@ Use strict mode only for signed release candidates:
 make verify-macos-signatures
 ```
 
-Strict mode fails on unsigned or invalid nested signatures, unsafe dynamic dependencies, and final
-`.app` bundle verification failures. If `APPLE_DEVELOPER_ID_APPLICATION` is set, verification also
-checks signed binaries against the expected Team Identifier or signing authority where macOS exposes
-that metadata.
+Strict mode fails on unsigned or invalid nested signatures, ad-hoc signatures, missing Developer ID
+authority, missing secure timestamps, missing Hardened Runtime flags, unsafe dynamic dependencies,
+unsigned native SQLite libraries embedded inside the packaged `sqlite-jdbc` dependency JAR, and
+final `.app` bundle verification failures. Verification checks signed binaries against
+`APPLE_DEVELOPER_ID_APPLICATION` and `APPLE_TEAM_ID` where macOS exposes that metadata.
 
 GitHub Actions release signing requires these repository secrets by name only:
 

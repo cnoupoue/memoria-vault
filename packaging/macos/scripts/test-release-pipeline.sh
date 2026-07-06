@@ -36,7 +36,15 @@ write_stub codesign '#!/usr/bin/env bash' \
   '  if [ "${STUB_CODESIGN_MISSING_IDENTITY:-0}" = "1" ]; then echo "error: The specified item could not be found in the keychain." >&2; exit 1; fi' \
   '  echo "$target" >>"${STUB_CODESIGN_SIGNED_LOG:?}"; exit 0' \
   'fi' \
-  'if [ "${1:-}" = "-dv" ]; then echo "TeamIdentifier=ZK7G72LVAX" >&2; echo "Authority=Developer ID Application: Test (ZK7G72LVAX)" >&2; exit 0; fi' \
+  'if [ "${1:-}" = "-dv" ]; then' \
+  '  if [ "${STUB_ADHOC_SIGNATURE:-0}" = "1" ]; then echo "Signature=adhoc" >&2; fi' \
+  '  if [ "${STUB_MISSING_AUTHORITY:-0}" != "1" ]; then echo "${STUB_AUTHORITY:-Authority=Developer ID Application: Test (ZK7G72LVAX)}" >&2; fi' \
+  '  echo "TeamIdentifier=${STUB_TEAM_ID:-ZK7G72LVAX}" >&2' \
+  '  if [ "${STUB_MISSING_TIMESTAMP:-0}" != "1" ]; then echo "Timestamp=Jan 1, 2026 at 00:00:00" >&2; fi' \
+  '  echo "Runtime Version=15.0.0" >&2' \
+  '  echo "CodeDirectory v=20500 size=1 flags=${STUB_FLAGS:-0x10000(runtime)} hashes=1+2 location=embedded" >&2' \
+  '  exit 0' \
+  'fi' \
   'if [ "${STUB_ALL_SIGNED:-0}" = "1" ] || printf "%s\n" "${STUB_SIGNED_PATHS:-}" | grep -Fxq "$target"; then exit 0; fi' \
   'if [ -n "${STUB_CODESIGN_SIGNED_LOG:-}" ] && [ -f "${STUB_CODESIGN_SIGNED_LOG}" ] && grep -Fxq "$target" "${STUB_CODESIGN_SIGNED_LOG}"; then exit 0; fi' \
   'echo "$target: code object is not signed at all" >&2' \
@@ -75,6 +83,18 @@ make_fixture() {
   printf 'ffmpeg\n' >"$fixture/Memoria Vault.app/Contents/app/ffmpeg/ffmpeg"
   printf 'native\n' >"$fixture/Memoria Vault.app/Contents/runtime/lib/libjava.dylib"
   chmod +x "$fixture/Memoria Vault.app/Contents/MacOS/Memoria Vault" "$fixture/Memoria Vault.app/Contents/app/ffmpeg/ffmpeg"
+
+  sqlite_work="$fixture/sqlite-work"
+  app_work="$fixture/app-work"
+  mkdir -p "$sqlite_work/org/sqlite/native/Mac/aarch64"
+  mkdir -p "$sqlite_work/org/sqlite/native/Mac/x86_64"
+  printf 'sqlite arm\n' >"$sqlite_work/org/sqlite/native/Mac/aarch64/libsqlitejdbc.dylib"
+  printf 'sqlite intel\n' >"$sqlite_work/org/sqlite/native/Mac/x86_64/libsqlitejdbc.dylib"
+  mkdir -p "$app_work/BOOT-INF/lib" "$app_work/BOOT-INF/classes/static"
+  (cd "$sqlite_work" && jar cf "$app_work/BOOT-INF/lib/sqlite-jdbc-test.jar" .)
+  printf 'html\n' >"$app_work/BOOT-INF/classes/static/index.html"
+  (cd "$app_work" && jar cf "$fixture/Memoria Vault.app/Contents/app/memoria-vault-test.jar" .)
+  rm -rf "$sqlite_work" "$app_work"
 }
 
 assert_contains() {
@@ -115,19 +135,83 @@ set -e
 assert_contains "$output" "Unable to access the configured Developer ID signing identity."
 assert_contains "$output" "Check that the certificate private key is available and that KEYCHAIN_PATH is configured correctly."
 
+fixture="$TMP_DIR/sign-sqlite"
+make_fixture "$fixture"
+STUB_CODESIGN_SIGNED_LOG="$TMP_DIR/sqlite-signed.log" STUB_CODESIGN_ARGS_LOG="$TMP_DIR/sqlite-signed-args.log" PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" KEYCHAIN_PATH="$TMP_DIR/signing.keychain-db" "$SCRIPT_DIR/sign-sqlite-native-libs.sh" "$fixture/Memoria Vault.app" >/dev/null
+grep -Fq "libsqlitejdbc.dylib" "$TMP_DIR/sqlite-signed.log" || { echo "Expected SQLite native libraries to be signed." >&2; exit 1; }
+sqlite_check="$TMP_DIR/sqlite-check"
+mkdir -p "$sqlite_check/app" "$sqlite_check/sqlite"
+(cd "$sqlite_check/app" && jar xf "$fixture/Memoria Vault.app/Contents/app/memoria-vault-test.jar" BOOT-INF/lib/sqlite-jdbc-test.jar)
+(cd "$sqlite_check/sqlite" && jar xf "$sqlite_check/app/BOOT-INF/lib/sqlite-jdbc-test.jar")
+test -f "$sqlite_check/sqlite/org/sqlite/native/Mac/aarch64/libsqlitejdbc.dylib" || { echo "Expected arm64 SQLite dylib to remain in app JAR." >&2; exit 1; }
+test -f "$sqlite_check/sqlite/org/sqlite/native/Mac/x86_64/libsqlitejdbc.dylib" || { echo "Expected x86_64 SQLite dylib to remain in app JAR." >&2; exit 1; }
+
 fixture="$TMP_DIR/verify-unsigned"
 make_fixture "$fixture"
 set +e
-output="$(PATH="$STUB_DIR:$PATH" "$SCRIPT_DIR/verify-signatures.sh" "$fixture/Memoria Vault.app" 2>&1)"
+output="$(PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" "$SCRIPT_DIR/verify-signatures.sh" "$fixture/Memoria Vault.app" 2>&1)"
 status=$?
 set -e
 [ "$status" -ne 0 ] || { echo "Expected unsigned nested binary verification to fail." >&2; exit 1; }
-assert_contains "$output" "Unsigned or invalid nested code"
+assert_contains "$output" "Unsigned or invalid code"
+
+fixture="$TMP_DIR/verify-adhoc"
+make_fixture "$fixture"
+set +e
+output="$(STUB_ALL_SIGNED=1 STUB_FLAGS='0x10002(runtime,adhoc)' PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" "$SCRIPT_DIR/verify-signatures.sh" "$fixture/Memoria Vault.app" 2>&1)"
+status=$?
+set -e
+[ "$status" -ne 0 ] || { echo "Expected ad hoc signatures to fail metadata verification." >&2; exit 1; }
+assert_contains "$output" "Ad hoc signature detected"
+
+fixture="$TMP_DIR/verify-missing-authority"
+make_fixture "$fixture"
+set +e
+output="$(STUB_ALL_SIGNED=1 STUB_MISSING_AUTHORITY=1 PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" "$SCRIPT_DIR/verify-signatures.sh" "$fixture/Memoria Vault.app" 2>&1)"
+status=$?
+set -e
+[ "$status" -ne 0 ] || { echo "Expected missing Developer ID authority to fail." >&2; exit 1; }
+assert_contains "$output" "Missing Developer ID authority"
+
+fixture="$TMP_DIR/verify-missing-timestamp"
+make_fixture "$fixture"
+set +e
+output="$(STUB_ALL_SIGNED=1 STUB_MISSING_TIMESTAMP=1 PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" "$SCRIPT_DIR/verify-signatures.sh" "$fixture/Memoria Vault.app" 2>&1)"
+status=$?
+set -e
+[ "$status" -ne 0 ] || { echo "Expected missing timestamp to fail." >&2; exit 1; }
+assert_contains "$output" "Missing secure timestamp"
+
+fixture="$TMP_DIR/verify-missing-runtime"
+make_fixture "$fixture"
+set +e
+output="$(STUB_ALL_SIGNED=1 STUB_FLAGS=0x0 PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" "$SCRIPT_DIR/verify-signatures.sh" "$fixture/Memoria Vault.app" 2>&1)"
+status=$?
+set -e
+[ "$status" -ne 0 ] || { echo "Expected missing Hardened Runtime to fail." >&2; exit 1; }
+assert_contains "$output" "Missing Hardened Runtime flag"
+
+fixture="$TMP_DIR/verify-team-mismatch"
+make_fixture "$fixture"
+set +e
+output="$(STUB_ALL_SIGNED=1 STUB_TEAM_ID=BADTEAM PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" "$SCRIPT_DIR/verify-signatures.sh" "$fixture/Memoria Vault.app" 2>&1)"
+status=$?
+set -e
+[ "$status" -ne 0 ] || { echo "Expected Team ID mismatch to fail." >&2; exit 1; }
+assert_contains "$output" "Team Identifier mismatch"
+
+fixture="$TMP_DIR/verify-strict-pass"
+make_fixture "$fixture"
+output="$(STUB_ALL_SIGNED=1 PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" "$SCRIPT_DIR/verify-signatures.sh" "$fixture/Memoria Vault.app")"
+assert_contains "$output" "Developer ID verified:"
+assert_contains "$output" "Secure timestamp verified:"
+assert_contains "$output" "Hardened Runtime verified:"
+assert_contains "$output" "SQLite native libraries:"
 
 fixture="$TMP_DIR/verify-unsafe"
 make_fixture "$fixture"
 set +e
-output="$(STUB_ALL_SIGNED=1 STUB_UNSAFE_DEPS=1 PATH="$STUB_DIR:$PATH" "$SCRIPT_DIR/verify-signatures.sh" "$fixture/Memoria Vault.app" 2>&1)"
+output="$(STUB_ALL_SIGNED=1 STUB_UNSAFE_DEPS=1 PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" "$SCRIPT_DIR/verify-signatures.sh" "$fixture/Memoria Vault.app" 2>&1)"
 status=$?
 set -e
 [ "$status" -ne 0 ] || { echo "Expected unsafe dependency verification to fail." >&2; exit 1; }
@@ -148,14 +232,14 @@ MAKE_TMP="$TMP_DIR/make"
 mkdir -p "$MAKE_TMP/dist/app"
 make_fixture "$MAKE_TMP/dist/app"
 set +e
-output="$(PATH="$STUB_DIR:$PATH" make -f "$REPO_ROOT/Makefile" package-macos-dmg-from-signed-app DIST_DIR="$MAKE_TMP/dist" APP_VERSION=1.2.3 JPACKAGE_VERSION=1.2.3 2>&1)"
+output="$(PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" make -f "$REPO_ROOT/Makefile" package-macos-dmg-from-signed-app DIST_DIR="$MAKE_TMP/dist" APP_VERSION=1.2.3 JPACKAGE_VERSION=1.2.3 2>&1)"
 status=$?
 set -e
 [ "$status" -ne 0 ] || { echo "Expected DMG packaging from unsigned app to fail." >&2; exit 1; }
 assert_contains "$output" "Refusing to create DMG because the app is not signed with valid release signatures"
 
 before="$(mtime "$MAKE_TMP/dist/app/Memoria Vault.app/Contents/MacOS/Memoria Vault")"
-STUB_ALL_SIGNED=1 PATH="$STUB_DIR:$PATH" make -f "$REPO_ROOT/Makefile" package-macos-dmg-from-signed-app DIST_DIR="$MAKE_TMP/dist" APP_VERSION=1.2.3 JPACKAGE_VERSION=1.2.3 >/dev/null
+STUB_ALL_SIGNED=1 PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" make -f "$REPO_ROOT/Makefile" package-macos-dmg-from-signed-app DIST_DIR="$MAKE_TMP/dist" APP_VERSION=1.2.3 JPACKAGE_VERSION=1.2.3 >/dev/null
 after="$(mtime "$MAKE_TMP/dist/app/Memoria Vault.app/Contents/MacOS/Memoria Vault")"
 [ "$before" = "$after" ] || { echo "DMG packaging modified the signed app." >&2; exit 1; }
 test -f "$MAKE_TMP/dist/installers/Memoria-Vault-1.2.3-macos-arm64.dmg" || { echo "Expected DMG to be created from signed app." >&2; exit 1; }
@@ -173,10 +257,14 @@ import_line="$(grep -n 'Import Developer ID certificate' "$workflow" | head -n 1
 identity_line="$(grep -n 'Verify signing identity' "$workflow" | head -n 1 | cut -d: -f1)"
 sign_line="$(grep -n 'Sign embedded code' "$workflow" | head -n 1 | cut -d: -f1)"
 notarize_line="$(grep -n 'Notarize macOS DMG' "$workflow" | head -n 1 | cut -d: -f1)"
+mounted_line="$(grep -n 'Verify mounted DMG signatures' "$workflow" | head -n 1 | cut -d: -f1)"
 publish_line="$(grep -n 'Publish GitHub Release assets' "$workflow" | head -n 1 | cut -d: -f1)"
 [ "$import_line" -lt "$identity_line" ] || { echo "Release workflow validates identity before import." >&2; exit 1; }
 [ "$identity_line" -lt "$sign_line" ] || { echo "Release workflow signs before validating identity." >&2; exit 1; }
+[ "$mounted_line" -lt "$notarize_line" ] || { echo "Release workflow notarizes before mounted DMG verification." >&2; exit 1; }
 [ "$notarize_line" -lt "$publish_line" ] || { echo "Release workflow publishes before notarization." >&2; exit 1; }
+grep -Fq 'make verify-macos-signatures' "$workflow" || { echo "Expected workflow to verify app signatures before DMG creation." >&2; exit 1; }
+grep -Fq 'make verify-macos-dmg-signatures' "$workflow" || { echo "Expected workflow to verify mounted DMG signatures before notarization." >&2; exit 1; }
 grep -Fq 'security find-identity -v -p codesigning "${KEYCHAIN_PATH}"' "$workflow" || { echo "Expected workflow to validate identity in the temporary keychain." >&2; exit 1; }
 grep -Fq 'Check that APPLE_CERTIFICATE_P12_BASE64 contains a .p12 exported with its private key' "$workflow" || { echo "Expected workflow to explain missing private key failures safely." >&2; exit 1; }
 grep -Fq 'rm -f "${CERTIFICATE_PATH}"' "$workflow" || { echo "Expected workflow cleanup to remove only the temporary certificate file." >&2; exit 1; }
