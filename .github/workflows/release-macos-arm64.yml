@@ -100,23 +100,54 @@ jobs:
         env:
           APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
         run: |
           set -euo pipefail
-          keychain_path="${RUNNER_TEMP}/memoria-vault-signing.keychain-db"
-          cert_path="${RUNNER_TEMP}/developer-id-application.p12"
-          keychain_password="$(uuidgen)"
 
-          printf '%s' "${APPLE_CERTIFICATE_P12_BASE64}" | base64 --decode > "${cert_path}"
-          security create-keychain -p "${keychain_password}" "${keychain_path}"
-          security set-keychain-settings -lut 21600 "${keychain_path}"
-          security unlock-keychain -p "${keychain_password}" "${keychain_path}"
-          security import "${cert_path}" -k "${keychain_path}" -P "${APPLE_CERTIFICATE_PASSWORD}" -T /usr/bin/codesign -T /usr/bin/productsign
-          security set-key-partition-list -S apple-tool:,apple: -s -k "${keychain_password}" "${keychain_path}" >/dev/null
+          CERTIFICATE_PATH="${RUNNER_TEMP}/developer-id-application.p12"
+          KEYCHAIN_PATH="${RUNNER_TEMP}/memoria-vault-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+
+          printf '%s' "${APPLE_CERTIFICATE_P12_BASE64}" | base64 --decode > "${CERTIFICATE_PATH}"
+
+          security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
+          security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+
+          security import "${CERTIFICATE_PATH}" \
+            -k "${KEYCHAIN_PATH}" \
+            -P "${APPLE_CERTIFICATE_PASSWORD}" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+
+          if [ -f "${HOME}/Library/Keychains/login.keychain-db" ]; then
+            security list-keychains -d user -s "${KEYCHAIN_PATH}" "${HOME}/Library/Keychains/login.keychain-db"
+          else
+            security list-keychains -d user -s "${KEYCHAIN_PATH}"
+          fi
+          security default-keychain -d user -s "${KEYCHAIN_PATH}"
+
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "${KEYCHAIN_PASSWORD}" \
+            "${KEYCHAIN_PATH}" >/dev/null
+
+          security find-identity -v -p codesigning "${KEYCHAIN_PATH}"
+
+          security find-identity -v -p codesigning "${KEYCHAIN_PATH}" \
+            | grep -F "${APPLE_DEVELOPER_ID_APPLICATION}" \
+            || {
+              echo "Expected Developer ID signing identity was not imported into the temporary keychain."
+              echo "Check that APPLE_CERTIFICATE_P12_BASE64 contains a .p12 exported with its private key and that APPLE_CERTIFICATE_PASSWORD is correct."
+              exit 1
+            }
 
           {
-            echo "APPLE_CODESIGN_KEYCHAIN=${keychain_path}"
-            echo "APPLE_KEYCHAIN_PATH=${keychain_path}"
-            echo "APPLE_CERTIFICATE_PATH=${cert_path}"
+            echo "KEYCHAIN_PATH=${KEYCHAIN_PATH}"
+            echo "APPLE_CODESIGN_KEYCHAIN=${KEYCHAIN_PATH}"
+            echo "APPLE_KEYCHAIN_PATH=${KEYCHAIN_PATH}"
+            echo "APPLE_CERTIFICATE_PATH=${CERTIFICATE_PATH}"
           } >> "${GITHUB_ENV}"
 
       - name: Build production JAR
@@ -125,9 +156,27 @@ jobs:
       - name: Build unsigned macOS app
         run: make package-macos-app
 
+      - name: Verify signing identity
+        env:
+          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+          KEYCHAIN_PATH: ${{ runner.temp }}/memoria-vault-signing.keychain-db
+        run: |
+          set -euo pipefail
+
+          echo "Checking expected Developer ID signing identity."
+
+          security find-identity -v -p codesigning "${KEYCHAIN_PATH}" \
+            | grep -F "${APPLE_DEVELOPER_ID_APPLICATION}" \
+            || {
+              echo "Expected Developer ID signing identity is unavailable in the temporary keychain."
+              echo "Check that APPLE_CERTIFICATE_P12_BASE64 contains a .p12 exported with its private key and that APPLE_CERTIFICATE_PASSWORD is correct."
+              exit 1
+            }
+
       - name: Sign embedded code
         env:
           APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+          KEYCHAIN_PATH: ${{ runner.temp }}/memoria-vault-signing.keychain-db
         run: make sign-macos-app
 
       - name: Verify app signatures
@@ -146,6 +195,7 @@ jobs:
       - name: Sign DMG
         env:
           APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+          KEYCHAIN_PATH: ${{ runner.temp }}/memoria-vault-signing.keychain-db
           MACOS_DMG_PATH: ${{ steps.version.outputs.release_dmg }}
         run: |
           set -euo pipefail
@@ -250,9 +300,12 @@ jobs:
         if: always()
         run: |
           set -euo pipefail
-          if [ -n "${APPLE_CERTIFICATE_PATH:-}" ] && [ -f "${APPLE_CERTIFICATE_PATH}" ]; then
-            rm -f "${APPLE_CERTIFICATE_PATH}"
-          fi
-          if [ -n "${APPLE_KEYCHAIN_PATH:-}" ] && [ -f "${APPLE_KEYCHAIN_PATH}" ]; then
-            security delete-keychain "${APPLE_KEYCHAIN_PATH}" || true
+
+          CERTIFICATE_PATH="${RUNNER_TEMP}/developer-id-application.p12"
+          KEYCHAIN_PATH="${RUNNER_TEMP}/memoria-vault-signing.keychain-db"
+
+          rm -f "${CERTIFICATE_PATH}"
+
+          if security list-keychains -d user | grep -q "$(basename "${KEYCHAIN_PATH}")"; then
+            security delete-keychain "${KEYCHAIN_PATH}" || true
           fi

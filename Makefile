@@ -274,10 +274,10 @@ package-macos-dmg-from-signed-app: check-macos-arm64 check-jpackage ## Create th
 sign-macos-dmg: check-macos ## Sign the existing DMG with Developer ID
 	@test -f "$(MACOS_DMG_PATH)" || { echo "Missing DMG: $(MACOS_DMG_PATH). Run 'make package-macos-dmg-from-signed-app' first."; exit 1; }
 	@test -n "$${APPLE_DEVELOPER_ID_APPLICATION:-}" || { echo "APPLE_DEVELOPER_ID_APPLICATION is required."; exit 1; }
-	@if [ -n "$${APPLE_CODESIGN_KEYCHAIN:-}" ]; then \
-		codesign --force --sign "$${APPLE_DEVELOPER_ID_APPLICATION}" --options runtime --timestamp --keychain "$${APPLE_CODESIGN_KEYCHAIN}" "$(MACOS_DMG_PATH)"; \
+	@if [ -n "$${KEYCHAIN_PATH:-$${APPLE_CODESIGN_KEYCHAIN:-}}" ]; then \
+		codesign --force --options runtime --timestamp --sign "$${APPLE_DEVELOPER_ID_APPLICATION}" --keychain "$${KEYCHAIN_PATH:-$${APPLE_CODESIGN_KEYCHAIN:-}}" "$(MACOS_DMG_PATH)" || { echo "Unable to access the configured Developer ID signing identity."; echo "Check that the certificate private key is available and that KEYCHAIN_PATH is configured correctly."; exit 1; }; \
 	else \
-		codesign --force --sign "$${APPLE_DEVELOPER_ID_APPLICATION}" --options runtime --timestamp "$(MACOS_DMG_PATH)"; \
+		codesign --force --options runtime --timestamp --sign "$${APPLE_DEVELOPER_ID_APPLICATION}" "$(MACOS_DMG_PATH)" || { echo "Unable to access the configured Developer ID signing identity."; echo "Check that the certificate private key is available and that KEYCHAIN_PATH is configured correctly."; exit 1; }; \
 	fi
 	@codesign --verify --strict --verbose=2 "$(MACOS_DMG_PATH)"
 

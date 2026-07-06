@@ -31,7 +31,11 @@ write_stub otool '#!/usr/bin/env bash' \
   'if [ "${STUB_UNSAFE_DEPS:-0}" = "1" ]; then echo "	/opt/homebrew/Cellar/example/1.0/lib/libexample.dylib (compatibility version 1.0.0, current version 1.0.0)"; fi'
 write_stub codesign '#!/usr/bin/env bash' \
   'target="${*: -1}"' \
-  'if printf "%s\n" "$*" | grep -q -- "--sign"; then echo "$target" >>"${STUB_CODESIGN_SIGNED_LOG:?}"; exit 0; fi' \
+  'if printf "%s\n" "$*" | grep -q -- "--sign"; then' \
+  '  if [ -n "${STUB_CODESIGN_ARGS_LOG:-}" ]; then printf "%s\n" "$*" >>"${STUB_CODESIGN_ARGS_LOG}"; fi' \
+  '  if [ "${STUB_CODESIGN_MISSING_IDENTITY:-0}" = "1" ]; then echo "error: The specified item could not be found in the keychain." >&2; exit 1; fi' \
+  '  echo "$target" >>"${STUB_CODESIGN_SIGNED_LOG:?}"; exit 0' \
+  'fi' \
   'if [ "${1:-}" = "-dv" ]; then echo "TeamIdentifier=ZK7G72LVAX" >&2; echo "Authority=Developer ID Application: Test (ZK7G72LVAX)" >&2; exit 0; fi' \
   'if [ "${STUB_ALL_SIGNED:-0}" = "1" ] || printf "%s\n" "${STUB_SIGNED_PATHS:-}" | grep -Fxq "$target"; then exit 0; fi' \
   'if [ -n "${STUB_CODESIGN_SIGNED_LOG:-}" ] && [ -f "${STUB_CODESIGN_SIGNED_LOG}" ] && grep -Fxq "$target" "${STUB_CODESIGN_SIGNED_LOG}"; then exit 0; fi' \
@@ -92,6 +96,25 @@ make_fixture "$fixture"
 STUB_CODESIGN_SIGNED_LOG="$TMP_DIR/signed.log" PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" "$SCRIPT_DIR/sign-app.sh" "$fixture/Memoria Vault.app" >/dev/null
 grep -Fq "$fixture/Memoria Vault.app/Contents/app/ffmpeg/ffmpeg" "$TMP_DIR/signed.log" || { echo "Expected signing script to sign FFmpeg." >&2; exit 1; }
 
+fixture="$TMP_DIR/sign-keychain"
+make_fixture "$fixture"
+STUB_CODESIGN_SIGNED_LOG="$TMP_DIR/signed-keychain.log" STUB_CODESIGN_ARGS_LOG="$TMP_DIR/signed-keychain-args.log" PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" KEYCHAIN_PATH="$TMP_DIR/signing.keychain-db" "$SCRIPT_DIR/sign-app.sh" "$fixture/Memoria Vault.app" >/dev/null
+grep -F -- "--keychain $TMP_DIR/signing.keychain-db" "$TMP_DIR/signed-keychain-args.log" >/dev/null || { echo "Expected signing script to pass KEYCHAIN_PATH to codesign." >&2; exit 1; }
+grep -F -- "--keychain $TMP_DIR/signing.keychain-db $fixture/Memoria Vault.app/Contents/app/ffmpeg/ffmpeg" "$TMP_DIR/signed-keychain-args.log" >/dev/null || { echo "Expected FFmpeg signing to use KEYCHAIN_PATH." >&2; exit 1; }
+grep -F -- "--keychain $TMP_DIR/signing.keychain-db $fixture/Memoria Vault.app" "$TMP_DIR/signed-keychain-args.log" >/dev/null || { echo "Expected final app signing to use KEYCHAIN_PATH." >&2; exit 1; }
+signed_without_keychain="$(grep -F -- "--sign Developer ID Application: Test (ZK7G72LVAX)" "$TMP_DIR/signed-keychain-args.log" | grep -Fv -- "--keychain" || true)"
+[ -z "$signed_without_keychain" ] || { echo "Expected every app signing operation to use KEYCHAIN_PATH." >&2; exit 1; }
+
+fixture="$TMP_DIR/missing-private-key"
+make_fixture "$fixture"
+set +e
+output="$(STUB_CODESIGN_MISSING_IDENTITY=1 STUB_CODESIGN_SIGNED_LOG="$TMP_DIR/missing-private-key.log" PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" KEYCHAIN_PATH="$TMP_DIR/signing.keychain-db" "$SCRIPT_DIR/sign-app.sh" "$fixture/Memoria Vault.app" 2>&1)"
+status=$?
+set -e
+[ "$status" -ne 0 ] || { echo "Expected signing to fail when the identity is unavailable." >&2; exit 1; }
+assert_contains "$output" "Unable to access the configured Developer ID signing identity."
+assert_contains "$output" "Check that the certificate private key is available and that KEYCHAIN_PATH is configured correctly."
+
 fixture="$TMP_DIR/verify-unsigned"
 make_fixture "$fixture"
 set +e
@@ -137,14 +160,31 @@ after="$(mtime "$MAKE_TMP/dist/app/Memoria Vault.app/Contents/MacOS/Memoria Vaul
 [ "$before" = "$after" ] || { echo "DMG packaging modified the signed app." >&2; exit 1; }
 test -f "$MAKE_TMP/dist/installers/Memoria-Vault-1.2.3-macos-arm64.dmg" || { echo "Expected DMG to be created from signed app." >&2; exit 1; }
 
+: >"$MAKE_TMP/dist/installers/Memoria-Vault-1.2.3-macos-arm64.dmg"
+STUB_CODESIGN_SIGNED_LOG="$TMP_DIR/dmg-signed.log" STUB_CODESIGN_ARGS_LOG="$TMP_DIR/dmg-signed-args.log" PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" KEYCHAIN_PATH="$TMP_DIR/signing.keychain-db" make -f "$REPO_ROOT/Makefile" sign-macos-dmg DIST_DIR="$MAKE_TMP/dist" APP_VERSION=1.2.3 JPACKAGE_VERSION=1.2.3 >/dev/null
+grep -F -- "--keychain $TMP_DIR/signing.keychain-db $MAKE_TMP/dist/installers/Memoria-Vault-1.2.3-macos-arm64.dmg" "$TMP_DIR/dmg-signed-args.log" >/dev/null || { echo "Expected DMG signing to use KEYCHAIN_PATH." >&2; exit 1; }
+
 help_output="$(make -f "$REPO_ROOT/Makefile" help)"
 assert_contains "$help_output" "Signed release path"
 assert_contains "$help_output" "package-macos-dmg-from-signed-app"
 
 workflow="$REPO_ROOT/.github/workflows/release-macos-arm64.yml"
+import_line="$(grep -n 'Import Developer ID certificate' "$workflow" | head -n 1 | cut -d: -f1)"
+identity_line="$(grep -n 'Verify signing identity' "$workflow" | head -n 1 | cut -d: -f1)"
+sign_line="$(grep -n 'Sign embedded code' "$workflow" | head -n 1 | cut -d: -f1)"
 notarize_line="$(grep -n 'Notarize macOS DMG' "$workflow" | head -n 1 | cut -d: -f1)"
 publish_line="$(grep -n 'Publish GitHub Release assets' "$workflow" | head -n 1 | cut -d: -f1)"
+[ "$import_line" -lt "$identity_line" ] || { echo "Release workflow validates identity before import." >&2; exit 1; }
+[ "$identity_line" -lt "$sign_line" ] || { echo "Release workflow signs before validating identity." >&2; exit 1; }
 [ "$notarize_line" -lt "$publish_line" ] || { echo "Release workflow publishes before notarization." >&2; exit 1; }
+grep -Fq 'security find-identity -v -p codesigning "${KEYCHAIN_PATH}"' "$workflow" || { echo "Expected workflow to validate identity in the temporary keychain." >&2; exit 1; }
+grep -Fq 'Check that APPLE_CERTIFICATE_P12_BASE64 contains a .p12 exported with its private key' "$workflow" || { echo "Expected workflow to explain missing private key failures safely." >&2; exit 1; }
+grep -Fq 'rm -f "${CERTIFICATE_PATH}"' "$workflow" || { echo "Expected workflow cleanup to remove only the temporary certificate file." >&2; exit 1; }
+grep -Fq 'security delete-keychain "${KEYCHAIN_PATH}"' "$workflow" || { echo "Expected workflow cleanup to delete the temporary keychain." >&2; exit 1; }
+if grep -Eq 'delete-keychain .*login' "$workflow"; then
+  echo "Workflow cleanup must not delete the login keychain." >&2
+  exit 1
+fi
 if grep -Eq 'echo \$\{\{ secrets\.(APPLE_APP_SPECIFIC_PASSWORD|APPLE_CERTIFICATE_PASSWORD|APPLE_CERTIFICATE_P12_BASE64)' "$workflow"; then
   echo "Workflow echoes a sensitive secret." >&2
   exit 1

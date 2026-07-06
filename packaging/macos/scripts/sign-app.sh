@@ -3,7 +3,7 @@ set -euo pipefail
 
 APP_PATH="${1:-}"
 IDENTITY="${APPLE_DEVELOPER_ID_APPLICATION:-}"
-KEYCHAIN_PATH="${APPLE_CODESIGN_KEYCHAIN:-}"
+KEYCHAIN_PATH="${KEYCHAIN_PATH:-${APPLE_CODESIGN_KEYCHAIN:-}}"
 
 if [ -z "$APP_PATH" ]; then
   echo "Usage: APPLE_DEVELOPER_ID_APPLICATION=<identity> $0 path/to/Memoria Vault.app" >&2
@@ -43,13 +43,21 @@ is_macho() {
 sign_one() {
   target="$1"
   rel="${target#"$APP_PATH/"}"
-  args=(--force --sign "$IDENTITY" --options runtime --timestamp)
-  if [ -n "$KEYCHAIN_PATH" ]; then
-    args+=(--keychain "$KEYCHAIN_PATH")
-  fi
 
   echo "Signing nested code: $rel"
-  if ! codesign "${args[@]}" "$target"; then
+  set +e
+  if [ -n "$KEYCHAIN_PATH" ]; then
+    sign_output="$(codesign --force --options runtime --timestamp --sign "$IDENTITY" --keychain "$KEYCHAIN_PATH" "$target" 2>&1)"
+  else
+    sign_output="$(codesign --force --options runtime --timestamp --sign "$IDENTITY" "$target" 2>&1)"
+  fi
+  sign_status=$?
+  set -e
+  if [ "$sign_status" -ne 0 ]; then
+    if printf '%s\n' "$sign_output" | grep -Eqi 'specified item could not be found|no identity found|identity.*not found|unable to build chain|errSecInternalComponent'; then
+      echo "Unable to access the configured Developer ID signing identity." >&2
+      echo "Check that the certificate private key is available and that KEYCHAIN_PATH is configured correctly." >&2
+    fi
     echo "Failed to sign nested Mach-O code: $rel" >&2
     exit 1
   fi
@@ -108,11 +116,22 @@ echo "Signing bundled FFmpeg explicitly: Contents/app/ffmpeg/ffmpeg"
 sign_one "$FFMPEG_PATH"
 
 echo "Signing final app bundle: $(basename "$APP_PATH")"
-app_args=(--force --sign "$IDENTITY" --options runtime --timestamp)
+set +e
 if [ -n "$KEYCHAIN_PATH" ]; then
-  app_args+=(--keychain "$KEYCHAIN_PATH")
+  app_sign_output="$(codesign --force --options runtime --timestamp --sign "$IDENTITY" --keychain "$KEYCHAIN_PATH" "$APP_PATH" 2>&1)"
+else
+  app_sign_output="$(codesign --force --options runtime --timestamp --sign "$IDENTITY" "$APP_PATH" 2>&1)"
 fi
-codesign "${app_args[@]}" "$APP_PATH"
+app_sign_status=$?
+set -e
+if [ "$app_sign_status" -ne 0 ]; then
+  if printf '%s\n' "$app_sign_output" | grep -Eqi 'specified item could not be found|no identity found|identity.*not found|unable to build chain|errSecInternalComponent'; then
+    echo "Unable to access the configured Developer ID signing identity." >&2
+    echo "Check that the certificate private key is available and that KEYCHAIN_PATH is configured correctly." >&2
+  fi
+  echo "Failed to sign final app bundle." >&2
+  exit 1
+fi
 
 codesign --verify --deep --strict --verbose=2 "$APP_PATH"
 

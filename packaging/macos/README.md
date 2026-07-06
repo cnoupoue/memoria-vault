@@ -79,6 +79,25 @@ APPLE_APP_SPECIFIC_PASSWORD
 The signing identity is read from `APPLE_DEVELOPER_ID_APPLICATION`. It is not hardcoded in scripts or
 workflow files.
 
+The `APPLE_CERTIFICATE_P12_BASE64` secret must be a base64-encoded `.p12` export that contains both:
+
+```text
+Developer ID Application certificate
++
+matching private key
+```
+
+Exporting only the `.cer` certificate is insufficient for GitHub Actions signing because `codesign`
+must have access to the private key. Before exporting the `.p12`, verify the local Mac can see the
+Developer ID signing identity:
+
+```bash
+security find-identity -v -p codesigning
+```
+
+The expected Developer ID identity should be listed. If it is not listed locally, fix the certificate
+and private key in Keychain Access before creating the `.p12` secret.
+
 ## Local signing test
 
 Run this before pushing a release tag when the Developer ID Application certificate is available
