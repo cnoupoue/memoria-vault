@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_PATH="${1:-}"
 IDENTITY="${APPLE_DEVELOPER_ID_APPLICATION:-}"
 KEYCHAIN_PATH="${KEYCHAIN_PATH:-${APPLE_CODESIGN_KEYCHAIN:-}}"
 EXPECTED_TEAM="${APPLE_TEAM_ID:-}"
 SUMMARY_DIR="${MACOS_SIGNING_SUMMARY_DIR:-}"
+
+# shellcheck source=packaging/macos/scripts/app-jar.sh
+. "$SCRIPT_DIR/app-jar.sh"
 
 if [ -z "$APP_PATH" ]; then
   echo "Usage: APPLE_DEVELOPER_ID_APPLICATION=<identity> $0 path/to/Memoria Vault.app" >&2
@@ -36,22 +40,6 @@ if [ ! -d "$APP_PATH" ]; then
   exit 1
 fi
 
-resolve_absolute_path() {
-  target="$1"
-
-  if [ -d "$target" ]; then
-    (
-      cd "$target"
-      pwd -P
-    )
-  else
-    (
-      cd "$(dirname "$target")"
-      printf '%s/%s\n' "$(pwd -P)" "$(basename "$target")"
-    )
-  fi
-}
-
 APP_PATH="$(resolve_absolute_path "$APP_PATH")"
 
 require_tool() {
@@ -61,7 +49,7 @@ require_tool() {
   }
 }
 
-for tool in find file jar codesign mktemp zip unzip; do
+for tool in find file jar codesign mktemp zip unzip awk; do
   require_tool "$tool"
 done
 
@@ -134,12 +122,7 @@ cleanup() {
 trap cleanup EXIT
 : >"$SUMMARY_FILE"
 
-APP_JAR="$(find "$APP_PATH/Contents/app" -maxdepth 1 -type f -name '*.jar' -print | head -n 1)"
-if [ -z "$APP_JAR" ]; then
-  echo "Missing packaged application JAR in app bundle." >&2
-  exit 1
-fi
-APP_JAR="$(resolve_absolute_path "$APP_JAR")"
+APP_JAR="$(find_packaged_app_jar "$APP_PATH")"
 APP_JAR_BACKUP="$WORK_DIR/$(basename "$APP_JAR").backup"
 cp "$APP_JAR" "$APP_JAR_BACKUP"
 

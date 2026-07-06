@@ -324,7 +324,7 @@ inspect-macos-app: ## Verify the generated macOS app bundle looks runnable
 	@test "$$(uname -s)" = "Darwin" || { echo "macOS app inspection requires macOS."; exit 1; }
 	@test -d "$(MACOS_APP_PATH)" || { echo "Missing app bundle: $(MACOS_APP_PATH). Run 'make package-macos-app' first."; exit 1; }
 	@test -d "$(MACOS_APP_PATH)/Contents/runtime" || { echo "Missing bundled runtime in $(MACOS_APP_PATH)."; exit 1; }
-	@test -f "$(MACOS_APP_PATH)/Contents/app/$$(basename "$(JAR_PATH)")" || { echo "Missing bundled JAR in $(MACOS_APP_PATH)."; exit 1; }
+	@bash -c '. "$(MACOS_PACKAGING_DIR)/scripts/app-jar.sh"; find_packaged_app_jar "$$1" >/dev/null' _ "$(MACOS_APP_PATH)" || exit 1
 	@test ! -f "$(MACOS_ICON)" || test -f "$(MACOS_APP_PATH)/Contents/Resources/$(APP_NAME).icns" || { echo "Missing app icon in $(MACOS_APP_PATH)."; exit 1; }
 	@test -x "$(MACOS_APP_PATH)/Contents/MacOS/$(APP_NAME)" || { echo "Missing app launcher executable."; exit 1; }
 	@echo "macOS app bundle is present and contains its runtime, launcher, JAR, and icon."

@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DMG_PATH="${1:-dist/installers/Memoria-Vault.dmg}"
 SUMMARY_DIR="${MACOS_SIGNING_SUMMARY_DIR:-}"
+
+# shellcheck source=packaging/macos/scripts/app-jar.sh
+. "$SCRIPT_DIR/app-jar.sh"
 
 if [ "$(uname -s)" != "Darwin" ]; then
   echo "Mounted DMG signature verification requires macOS." >&2
@@ -14,7 +18,7 @@ if [ ! -f "$DMG_PATH" ]; then
   exit 1
 fi
 
-for tool in hdiutil find mktemp; do
+for tool in hdiutil find mktemp jar awk; do
   command -v "$tool" >/dev/null 2>&1 || {
     echo "Missing required tool: $tool" >&2
     exit 1
@@ -36,11 +40,13 @@ if [ -z "$APP_PATH" ]; then
   exit 1
 fi
 
+find_packaged_app_jar "$APP_PATH" >/dev/null
+
 if [ -n "$SUMMARY_DIR" ]; then
   mkdir -p "$SUMMARY_DIR"
   mounted_summary_dir="$SUMMARY_DIR/mounted-dmg"
   mkdir -p "$mounted_summary_dir"
-  MACOS_SIGNING_SUMMARY_DIR="$mounted_summary_dir" "$(dirname "$0")/verify-signatures.sh" "$APP_PATH" >"$SUMMARY_DIR/mounted-dmg-signing-summary.txt"
+  MACOS_SIGNING_SUMMARY_DIR="$mounted_summary_dir" "$SCRIPT_DIR/verify-signatures.sh" "$APP_PATH" >"$SUMMARY_DIR/mounted-dmg-signing-summary.txt"
 else
-  "$(dirname "$0")/verify-signatures.sh" "$APP_PATH"
+  "$SCRIPT_DIR/verify-signatures.sh" "$APP_PATH"
 fi

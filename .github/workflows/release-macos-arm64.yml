@@ -195,6 +195,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "${MACOS_NOTARIZATION_ARTIFACT_DIR}"
+          echo "Packaged app JAR candidates:"
+          find "dist/app/Memoria Vault.app/Contents/app" \
+            -maxdepth 1 \
+            -type f \
+            -name '*.jar' \
+            -exec basename {} \;
           make verify-macos-signatures | tee "${MACOS_NOTARIZATION_ARTIFACT_DIR}/signature-verification-summary.txt"
 
       - name: Create signed DMG

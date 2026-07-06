@@ -82,6 +82,7 @@ chmod +x "$FAIL_ZIP_DIR/zip"
 
 make_fixture() {
   fixture="$1"
+  jar_name="${2:-memoria-vault-test.jar}"
   mkdir -p "$fixture/Memoria Vault.app/Contents/MacOS"
   mkdir -p "$fixture/Memoria Vault.app/Contents/app/ffmpeg"
   mkdir -p "$fixture/Memoria Vault.app/Contents/runtime/lib"
@@ -99,7 +100,7 @@ make_fixture() {
   mkdir -p "$app_work/BOOT-INF/lib" "$app_work/BOOT-INF/classes/static"
   (cd "$sqlite_work" && jar cf "$app_work/BOOT-INF/lib/sqlite-jdbc-test.jar" .)
   printf 'html\n' >"$app_work/BOOT-INF/classes/static/index.html"
-  (cd "$app_work" && jar cf "$fixture/Memoria Vault.app/Contents/app/memoria-vault-test.jar" .)
+  (cd "$app_work" && jar cf "$fixture/Memoria Vault.app/Contents/app/$jar_name" .)
   rm -rf "$sqlite_work" "$app_work"
 }
 
@@ -130,6 +131,44 @@ mtime() {
   stat -f %m "$1" 2>/dev/null || stat -c %Y "$1"
 }
 
+fixture="$TMP_DIR/app-jar-version-mismatch"
+make_fixture "$fixture" "memoria-vault-0.1.1.jar"
+found_app_jar="$(. "$SCRIPT_DIR/app-jar.sh"; find_packaged_app_jar "$fixture/Memoria Vault.app")"
+case "$found_app_jar" in
+  *"/Memoria Vault.app/Contents/app/memoria-vault-0.1.1.jar") ;;
+  *) echo "Expected packaged app JAR discovery to use the actual app image contents." >&2; exit 1 ;;
+esac
+
+fixture="$TMP_DIR/app-jar-other-cwd"
+make_fixture "$fixture" "memoria-vault-release-tag-differs.jar"
+(
+  cd "$fixture"
+  found_app_jar="$(. "$SCRIPT_DIR/app-jar.sh"; find_packaged_app_jar "Memoria Vault.app")"
+  case "$found_app_jar" in
+    *"/Memoria Vault.app/Contents/app/memoria-vault-release-tag-differs.jar") ;;
+    *) echo "Expected packaged app JAR discovery to work from an arbitrary current directory." >&2; exit 1 ;;
+  esac
+)
+
+fixture="$TMP_DIR/app-jar-missing"
+mkdir -p "$fixture/Memoria Vault.app/Contents/app"
+set +e
+output="$(. "$SCRIPT_DIR/app-jar.sh"; find_packaged_app_jar "$fixture/Memoria Vault.app" 2>&1)"
+status=$?
+set -e
+[ "$status" -ne 0 ] || { echo "Expected missing packaged app JAR discovery to fail." >&2; exit 1; }
+assert_contains "$output" "Unable to uniquely locate the packaged application JAR."
+
+fixture="$TMP_DIR/app-jar-multiple"
+make_fixture "$fixture" "memoria-vault-one.jar"
+cp "$fixture/Memoria Vault.app/Contents/app/memoria-vault-one.jar" "$fixture/Memoria Vault.app/Contents/app/memoria-vault-two.jar"
+set +e
+output="$(. "$SCRIPT_DIR/app-jar.sh"; find_packaged_app_jar "$fixture/Memoria Vault.app" 2>&1)"
+status=$?
+set -e
+[ "$status" -ne 0 ] || { echo "Expected multiple packaged app JAR discovery to fail." >&2; exit 1; }
+assert_contains "$output" "Unable to uniquely locate the packaged application JAR."
+
 fixture="$TMP_DIR/sign"
 make_fixture "$fixture"
 STUB_CODESIGN_SIGNED_LOG="$TMP_DIR/signed.log" PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" "$SCRIPT_DIR/sign-app.sh" "$fixture/Memoria Vault.app" >/dev/null
@@ -155,13 +194,13 @@ assert_contains "$output" "Unable to access the configured Developer ID signing 
 assert_contains "$output" "Check that the certificate private key is available and that KEYCHAIN_PATH is configured correctly."
 
 fixture="$TMP_DIR/sign-sqlite"
-make_fixture "$fixture"
+make_fixture "$fixture" "memoria-vault-0.1.1.jar"
 STUB_ALL_SIGNED=1 STUB_CODESIGN_SIGNED_LOG="$TMP_DIR/sqlite-signed.log" STUB_CODESIGN_ARGS_LOG="$TMP_DIR/sqlite-signed-args.log" PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" KEYCHAIN_PATH="$TMP_DIR/signing.keychain-db" "$SCRIPT_DIR/sign-sqlite-native-libs.sh" "$fixture/Memoria Vault.app" >/dev/null
 grep -Fq "libsqlitejdbc.dylib" "$TMP_DIR/sqlite-signed.log" || { echo "Expected SQLite native libraries to be signed." >&2; exit 1; }
-unzip -tq "$fixture/Memoria Vault.app/Contents/app/memoria-vault-test.jar" >/dev/null || { echo "Expected modified outer app JAR to pass unzip validation." >&2; exit 1; }
+unzip -tq "$fixture/Memoria Vault.app/Contents/app/memoria-vault-0.1.1.jar" >/dev/null || { echo "Expected modified outer app JAR to pass unzip validation." >&2; exit 1; }
 sqlite_check="$TMP_DIR/sqlite-check"
 mkdir -p "$sqlite_check/app" "$sqlite_check/sqlite"
-(cd "$sqlite_check/app" && jar xf "$fixture/Memoria Vault.app/Contents/app/memoria-vault-test.jar" BOOT-INF/lib/sqlite-jdbc-test.jar)
+(cd "$sqlite_check/app" && jar xf "$fixture/Memoria Vault.app/Contents/app/memoria-vault-0.1.1.jar" BOOT-INF/lib/sqlite-jdbc-test.jar)
 (cd "$sqlite_check/sqlite" && jar xf "$sqlite_check/app/BOOT-INF/lib/sqlite-jdbc-test.jar")
 test -f "$sqlite_check/sqlite/org/sqlite/native/Mac/aarch64/libsqlitejdbc.dylib" || { echo "Expected arm64 SQLite dylib to remain in app JAR." >&2; exit 1; }
 test -f "$sqlite_check/sqlite/org/sqlite/native/Mac/x86_64/libsqlitejdbc.dylib" || { echo "Expected x86_64 SQLite dylib to remain in app JAR." >&2; exit 1; }
@@ -254,7 +293,7 @@ set -e
 assert_contains "$output" "Team Identifier mismatch"
 
 fixture="$TMP_DIR/verify-strict-pass"
-make_fixture "$fixture"
+make_fixture "$fixture" "memoria-vault-0.1.1.jar"
 output="$(STUB_ALL_SIGNED=1 PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" "$SCRIPT_DIR/verify-signatures.sh" "$fixture/Memoria Vault.app")"
 assert_contains "$output" "Developer ID verified:"
 assert_contains "$output" "Secure timestamp verified:"
@@ -318,6 +357,7 @@ publish_line="$(grep -n 'Publish GitHub Release assets' "$workflow" | head -n 1 
 [ "$notarize_line" -lt "$publish_line" ] || { echo "Release workflow publishes before notarization." >&2; exit 1; }
 grep -Fq 'make verify-macos-signatures' "$workflow" || { echo "Expected workflow to verify app signatures before DMG creation." >&2; exit 1; }
 grep -Fq 'make verify-macos-dmg-signatures' "$workflow" || { echo "Expected workflow to verify mounted DMG signatures before notarization." >&2; exit 1; }
+grep -Fq 'Packaged app JAR candidates:' "$workflow" || { echo "Expected workflow to list packaged app JAR candidate filenames before verification." >&2; exit 1; }
 grep -Fq 'security find-identity -v -p codesigning "${KEYCHAIN_PATH}"' "$workflow" || { echo "Expected workflow to validate identity in the temporary keychain." >&2; exit 1; }
 grep -Fq 'Check that APPLE_CERTIFICATE_P12_BASE64 contains a .p12 exported with its private key' "$workflow" || { echo "Expected workflow to explain missing private key failures safely." >&2; exit 1; }
 grep -Fq 'rm -f "${CERTIFICATE_PATH}"' "$workflow" || { echo "Expected workflow cleanup to remove only the temporary certificate file." >&2; exit 1; }
@@ -328,6 +368,11 @@ if grep -Eq 'delete-keychain .*login' "$workflow"; then
 fi
 if grep -Eq 'echo \$\{\{ secrets\.(APPLE_APP_SPECIFIC_PASSWORD|APPLE_CERTIFICATE_PASSWORD|APPLE_CERTIFICATE_P12_BASE64)' "$workflow"; then
   echo "Workflow echoes a sensitive secret." >&2
+  exit 1
+fi
+grep -Fq 'find_packaged_app_jar "$APP_PATH"' "$SCRIPT_DIR/verify-dmg-signatures.sh" || { echo "Expected mounted DMG verification to discover the packaged app JAR inside the mounted app." >&2; exit 1; }
+if grep -n 'Contents/app/.*basename.*JAR_PATH\|memoria-vault-.*APP_VERSION\|memoria-vault-.*VERSION' "$REPO_ROOT/Makefile" "$SCRIPT_DIR/sign-sqlite-native-libs.sh" "$SCRIPT_DIR/verify-signatures.sh" "$SCRIPT_DIR/verify-dmg-signatures.sh" >/dev/null; then
+  echo "Packaging scripts must not construct the packaged app JAR path from the project version." >&2
   exit 1
 fi
 

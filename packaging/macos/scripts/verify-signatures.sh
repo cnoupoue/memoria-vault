@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_PATH="${1:-dist/app/Memoria Vault.app}"
 EXPECTED_IDENTITY="${APPLE_DEVELOPER_ID_APPLICATION:-}"
 EXPECTED_TEAM="${APPLE_TEAM_ID:-}"
 DIAGNOSTIC="${MACOS_SIGNING_DIAGNOSTIC:-0}"
 SUMMARY_DIR="${MACOS_SIGNING_SUMMARY_DIR:-}"
+
+# shellcheck source=packaging/macos/scripts/app-jar.sh
+. "$SCRIPT_DIR/app-jar.sh"
 
 if [ "$(uname -s)" != "Darwin" ]; then
   echo "macOS signature verification requires macOS." >&2
@@ -16,6 +20,7 @@ if [ ! -d "$APP_PATH" ]; then
   echo "Missing app bundle. Run make package-macos-app first." >&2
   exit 1
 fi
+APP_PATH="$(resolve_absolute_path "$APP_PATH")"
 
 if [ -z "$EXPECTED_TEAM" ] && [ -n "$EXPECTED_IDENTITY" ]; then
   EXPECTED_TEAM="$(printf '%s\n' "$EXPECTED_IDENTITY" | sed -n 's/.*(\([^()]*\)).*/\1/p')"
@@ -33,7 +38,7 @@ require_tool() {
   }
 }
 
-for tool in find file codesign otool sort jar mktemp; do
+for tool in find file codesign otool sort jar mktemp awk; do
   require_tool "$tool"
 done
 
@@ -238,13 +243,14 @@ extract_and_record_sqlite_dylibs() {
 : >"$SQLITE_SUMMARY"
 : >"$FFMPEG_SUMMARY"
 
+APP_JAR="$(find_packaged_app_jar "$APP_PATH")"
+
 find "$APP_PATH" -type f -print0 | while IFS= read -r -d '' candidate; do
   if is_macho "$candidate"; then
     printf '%s\t%s\n' "$candidate" "$(safe_path "$candidate")" >>"$FOUND_LIST"
-  elif printf '%s\n' "$candidate" | grep -Eq '\.jar$'; then
-    extract_and_record_sqlite_dylibs "$candidate" "$(safe_path "$candidate")"
   fi
 done
+extract_and_record_sqlite_dylibs "$APP_JAR" "$(safe_path "$APP_JAR")"
 
 awk -F '\t' '
   NF >= 2 {
