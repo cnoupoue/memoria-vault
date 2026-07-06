@@ -169,6 +169,56 @@ set -e
 [ "$status" -ne 0 ] || { echo "Expected multiple packaged app JAR discovery to fail." >&2; exit 1; }
 assert_contains "$output" "Unable to uniquely locate the packaged application JAR."
 
+fixture="$TMP_DIR/freshness-beta"
+make_fixture "$fixture" "memoria-vault-0.1.2-beta.7.jar"
+source_jar="$fixture/source/memoria-vault-0.1.2-beta.7.jar"
+mkdir -p "$fixture/source"
+cp "$fixture/Memoria Vault.app/Contents/app/memoria-vault-0.1.2-beta.7.jar" "$source_jar"
+output="$(. "$SCRIPT_DIR/app-jar.sh"; packaged_jar="$(find_packaged_app_jar "$fixture/Memoria Vault.app")"; assert_packaged_app_jar_matches_build "$source_jar" "$packaged_jar" "0.1.2-beta.7" "memoria-vault")"
+assert_contains "$output" "Packaging freshness: verified"
+
+fixture="$TMP_DIR/freshness-stable"
+make_fixture "$fixture" "memoria-vault-1.0.0.jar"
+source_jar="$fixture/source/memoria-vault-1.0.0.jar"
+mkdir -p "$fixture/source"
+cp "$fixture/Memoria Vault.app/Contents/app/memoria-vault-1.0.0.jar" "$source_jar"
+output="$(. "$SCRIPT_DIR/app-jar.sh"; packaged_jar="$(find_packaged_app_jar "$fixture/Memoria Vault.app")"; assert_packaged_app_jar_matches_build "$source_jar" "$packaged_jar" "1.0.0" "memoria-vault")"
+assert_contains "$output" "Packaging freshness: verified"
+
+fixture="$TMP_DIR/freshness-stale-target"
+make_fixture "$fixture" "memoria-vault-0.1.1.jar"
+set +e
+output="$(. "$SCRIPT_DIR/app-jar.sh"; packaged_jar="$(find_packaged_app_jar "$fixture/Memoria Vault.app")"; assert_packaged_app_jar_matches_build "$packaged_jar" "$packaged_jar" "0.1.2-beta.6" "memoria-vault" 2>&1)"
+status=$?
+set -e
+[ "$status" -ne 0 ] || { echo "Expected stale target JAR version validation to fail." >&2; exit 1; }
+assert_contains "$output" "Source production JAR version does not match the expected Maven version."
+
+fixture="$TMP_DIR/freshness-version-mismatch"
+make_fixture "$fixture" "memoria-vault-0.1.2.jar"
+source_jar="$fixture/source/memoria-vault-0.1.2-beta.7.jar"
+mkdir -p "$fixture/source"
+cp "$fixture/Memoria Vault.app/Contents/app/memoria-vault-0.1.2.jar" "$source_jar"
+set +e
+output="$(. "$SCRIPT_DIR/app-jar.sh"; packaged_jar="$(find_packaged_app_jar "$fixture/Memoria Vault.app")"; assert_packaged_app_jar_matches_build "$source_jar" "$packaged_jar" "0.1.2-beta.7" "memoria-vault" 2>&1)"
+status=$?
+set -e
+[ "$status" -ne 0 ] || { echo "Expected packaged JAR version mismatch validation to fail." >&2; exit 1; }
+assert_contains "$output" "Packaged application JAR version does not match the expected Maven version."
+
+fixture="$TMP_DIR/freshness-checksum-mismatch"
+make_fixture "$fixture" "memoria-vault-0.1.2-beta.7.jar"
+source_jar="$fixture/source/memoria-vault-0.1.2-beta.7.jar"
+mkdir -p "$fixture/source"
+cp "$fixture/Memoria Vault.app/Contents/app/memoria-vault-0.1.2-beta.7.jar" "$source_jar"
+printf 'changed\n' >>"$fixture/Memoria Vault.app/Contents/app/memoria-vault-0.1.2-beta.7.jar"
+set +e
+output="$(. "$SCRIPT_DIR/app-jar.sh"; packaged_jar="$(find_packaged_app_jar "$fixture/Memoria Vault.app")"; assert_packaged_app_jar_matches_build "$source_jar" "$packaged_jar" "0.1.2-beta.7" "memoria-vault" 2>&1)"
+status=$?
+set -e
+[ "$status" -ne 0 ] || { echo "Expected packaged JAR checksum mismatch validation to fail." >&2; exit 1; }
+assert_contains "$output" "Packaged application JAR checksum does not match the source production JAR."
+
 fixture="$TMP_DIR/sign"
 make_fixture "$fixture"
 STUB_CODESIGN_SIGNED_LOG="$TMP_DIR/signed.log" PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" "$SCRIPT_DIR/sign-app.sh" "$fixture/Memoria Vault.app" >/dev/null
@@ -322,16 +372,35 @@ assert_contains "$output" "Apple notarization submission ID: test-submission-id"
 
 MAKE_TMP="$TMP_DIR/make"
 mkdir -p "$MAKE_TMP/dist/app"
-make_fixture "$MAKE_TMP/dist/app"
+make_fixture "$MAKE_TMP/dist/app" "memoria-vault-1.2.3.jar"
+mkdir -p "$MAKE_TMP/target"
+cp "$MAKE_TMP/dist/app/Memoria Vault.app/Contents/app/memoria-vault-1.2.3.jar" "$MAKE_TMP/target/memoria-vault-1.2.3.jar"
+mkdir -p "$MAKE_TMP/clean/dist/app/stale"
+touch "$MAKE_TMP/clean/dist/app/stale/old-file"
+make -f "$REPO_ROOT/Makefile" clean-macos-app-output DIST_DIR="$MAKE_TMP/clean/dist" >/dev/null
+test ! -e "$MAKE_TMP/clean/dist/app/stale/old-file" || { echo "Expected clean-macos-app-output to remove stale app-image output." >&2; exit 1; }
+
+stale_sign="$TMP_DIR/stale-sign"
+mkdir -p "$stale_sign/dist/app" "$stale_sign/target"
+make_fixture "$stale_sign/dist/app" "memoria-vault-0.1.1.jar"
+cp "$MAKE_TMP/target/memoria-vault-1.2.3.jar" "$stale_sign/target/memoria-vault-1.2.3.jar"
 set +e
-output="$(PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" make -f "$REPO_ROOT/Makefile" package-macos-dmg-from-signed-app DIST_DIR="$MAKE_TMP/dist" APP_VERSION=1.2.3 JPACKAGE_VERSION=1.2.3 2>&1)"
+output="$(STUB_CODESIGN_SIGNED_LOG="$TMP_DIR/stale-sign-codesign.log" PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" make -f "$REPO_ROOT/Makefile" sign-macos-app DIST_DIR="$stale_sign/dist" JAR_PATH="$stale_sign/target/memoria-vault-1.2.3.jar" APP_VERSION=1.2.3 2>&1)"
+status=$?
+set -e
+[ "$status" -ne 0 ] || { echo "Expected signing to fail before codesign when packaged JAR freshness validation fails." >&2; exit 1; }
+assert_contains "$output" "Packaged application JAR version does not match the expected Maven version."
+test ! -f "$TMP_DIR/stale-sign-codesign.log" || { echo "Expected stale packaged JAR to fail before codesign runs." >&2; exit 1; }
+
+set +e
+output="$(PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" make -f "$REPO_ROOT/Makefile" package-macos-dmg-from-signed-app DIST_DIR="$MAKE_TMP/dist" JAR_PATH="$MAKE_TMP/target/memoria-vault-1.2.3.jar" APP_VERSION=1.2.3 JPACKAGE_VERSION=1.2.3 2>&1)"
 status=$?
 set -e
 [ "$status" -ne 0 ] || { echo "Expected DMG packaging from unsigned app to fail." >&2; exit 1; }
 assert_contains "$output" "Refusing to create DMG because the app is not signed with valid release signatures"
 
 before="$(mtime "$MAKE_TMP/dist/app/Memoria Vault.app/Contents/MacOS/Memoria Vault")"
-STUB_ALL_SIGNED=1 PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" make -f "$REPO_ROOT/Makefile" package-macos-dmg-from-signed-app DIST_DIR="$MAKE_TMP/dist" APP_VERSION=1.2.3 JPACKAGE_VERSION=1.2.3 >/dev/null
+STUB_ALL_SIGNED=1 PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" make -f "$REPO_ROOT/Makefile" package-macos-dmg-from-signed-app DIST_DIR="$MAKE_TMP/dist" JAR_PATH="$MAKE_TMP/target/memoria-vault-1.2.3.jar" APP_VERSION=1.2.3 JPACKAGE_VERSION=1.2.3 >/dev/null
 after="$(mtime "$MAKE_TMP/dist/app/Memoria Vault.app/Contents/MacOS/Memoria Vault")"
 [ "$before" = "$after" ] || { echo "DMG packaging modified the signed app." >&2; exit 1; }
 test -f "$MAKE_TMP/dist/installers/Memoria-Vault-1.2.3-macos-arm64.dmg" || { echo "Expected DMG to be created from signed app." >&2; exit 1; }

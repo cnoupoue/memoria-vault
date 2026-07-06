@@ -42,6 +42,7 @@ MACOS_DMG_SHA256_PATH ?= $(MACOS_DMG_PATH).sha256
 	package-macos-release package-macos checksum-macos-dmg run-macos-app \
 	package-windows package-linux \
 	inspect-macos-app clean-packaging generate-macos-icon prepare-macos-input \
+	clean-macos-app-output validate-macos-packaging-input validate-macos-packaged-app \
 	check-bundled-ffmpeg prepare-bundled-ffmpeg inspect-bundled-ffmpeg \
 	inspect-macos-signing-readiness test-macos-signing-readiness test-macos-release-pipeline \
 	check-macos check-macos-arm64 check-jpackage check-icon-tools \
@@ -182,6 +183,13 @@ prepare-macos-input: package-jar ## Stage only the production JAR for jpackage
 	@mkdir -p "$(JPACKAGE_INPUT_DIR)"
 	cp "$(JAR_PATH)" "$(JPACKAGE_INPUT_DIR)/"
 
+clean-macos-app-output: ## Remove generated macOS app-image output before packaging
+	@rm -rf "$(APP_OUTPUT_DIR)"
+	@mkdir -p "$(APP_OUTPUT_DIR)"
+
+validate-macos-packaging-input: check-production-jar ## Verify the production JAR selected for macOS packaging is current
+	@bash -c '. "$(MACOS_PACKAGING_DIR)/scripts/app-jar.sh"; assert_source_production_jar "$$1" "$$2" "$$3"' _ "$(JAR_PATH)" "$(APP_VERSION)" "$(ARTIFACT_ID)"
+
 check-bundled-ffmpeg: check-macos-arm64 ## Verify the macOS arm64 FFmpeg binary is present for packaging
 	@test -f "$(BUNDLED_FFMPEG_SOURCE)" || { echo "Missing bundled FFmpeg: $(BUNDLED_FFMPEG_SOURCE). Add a verified macOS $(MACOS_ARCH) FFmpeg binary and update packaging/macos/ffmpeg/README.md plus THIRD_PARTY_NOTICES.md."; exit 1; }
 	@test -x "$(BUNDLED_FFMPEG_SOURCE)" || { echo "Bundled FFmpeg is not executable: $(BUNDLED_FFMPEG_SOURCE). Run 'chmod +x $(BUNDLED_FFMPEG_SOURCE)' after verifying the binary."; exit 1; }
@@ -219,9 +227,7 @@ generate-macos-icon: check-icon-tools ## Generate the macOS app icon from the fa
 	rm -rf "$$tmp_dir"; \
 	test -f "$(MACOS_ICON)" || { echo "Icon generation failed: $(MACOS_ICON)"; exit 1; }
 
-package-macos-app: prepare-bundled-ffmpeg generate-macos-icon check-macos-arm64 check-jpackage ## Create dist/app/Memoria Vault.app with a bundled runtime and FFmpeg
-	@rm -rf "$(MACOS_APP_PATH)"
-	@mkdir -p "$(APP_OUTPUT_DIR)"
+package-macos-app: build-production clean-macos-app-output prepare-bundled-ffmpeg validate-macos-packaging-input generate-macos-icon check-macos-arm64 check-jpackage ## Create dist/app/Memoria Vault.app with a bundled runtime and FFmpeg
 	jpackage \
 		--type app-image \
 		--dest "$(APP_OUTPUT_DIR)" \
@@ -235,16 +241,24 @@ package-macos-app: prepare-bundled-ffmpeg generate-macos-icon check-macos-arm64 
 		--arguments "$(SPRING_ARGS)" \
 		--icon "$(MACOS_ICON)" \
 		--jlink-options "$(JLINK_OPTIONS)"
+	@$(MAKE) validate-macos-packaged-app
+
+validate-macos-packaged-app: check-production-jar ## Verify the packaged app contains the current production JAR
+	@test -d "$(MACOS_APP_PATH)" || { echo "Missing app bundle: $(MACOS_APP_PATH). Run 'make package-macos-app' first."; exit 1; }
+	@bash -c '. "$(MACOS_PACKAGING_DIR)/scripts/app-jar.sh"; source_jar="$$(resolve_absolute_path "$$1")"; packaged_jar="$$(find_packaged_app_jar "$$2")"; assert_packaged_app_jar_matches_build "$$source_jar" "$$packaged_jar" "$$3" "$$4"' _ "$(JAR_PATH)" "$(MACOS_APP_PATH)" "$(APP_VERSION)" "$(ARTIFACT_ID)"
 
 postprocess-macos-sqlite-native-libs: check-macos ## Sign SQLite native libraries embedded inside the packaged application JAR
 	@test -d "$(MACOS_APP_PATH)" || { echo "Missing app bundle: $(MACOS_APP_PATH). Run 'make package-macos-app' first."; exit 1; }
+	@$(MAKE) validate-macos-packaged-app
 	@packaging/macos/scripts/sign-sqlite-native-libs.sh "$(MACOS_APP_PATH)"
 
 sign-macos-app: check-macos ## Sign nested Mach-O code and the final existing macOS app bundle
 	@test -d "$(MACOS_APP_PATH)" || { echo "Missing app bundle: $(MACOS_APP_PATH). Run 'make package-macos-app' first."; exit 1; }
+	@$(MAKE) validate-macos-packaged-app
 	@packaging/macos/scripts/sign-app.sh "$(MACOS_APP_PATH)"
 
 verify-macos-signatures: check-macos ## Strictly verify all nested signatures and the final app bundle
+	@$(MAKE) validate-macos-packaged-app
 	@packaging/macos/scripts/verify-signatures.sh "$(MACOS_APP_PATH)"
 
 package-macos-dmg: package-macos-app ## Create an unsigned development DMG; do not use for signed releases
@@ -262,6 +276,7 @@ package-macos-dmg: package-macos-app ## Create an unsigned development DMG; do n
 
 package-macos-dmg-from-signed-app: check-macos-arm64 check-jpackage ## Create the release DMG from the already signed app without rebuilding it
 	@test -d "$(MACOS_APP_PATH)" || { echo "Missing signed app bundle: $(MACOS_APP_PATH). Run 'make package-macos-app' and 'make sign-macos-app' first."; exit 1; }
+	@$(MAKE) validate-macos-packaged-app
 	@packaging/macos/scripts/verify-signatures.sh "$(MACOS_APP_PATH)" >/dev/null 2>&1 || { echo "Refusing to create DMG because the app is not signed with valid release signatures."; exit 1; }
 	@rm -f "$(MACOS_DMG_PATH)"
 	@mkdir -p "$(INSTALLER_OUTPUT_DIR)"
