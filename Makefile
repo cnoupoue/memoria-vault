@@ -29,6 +29,7 @@ BUNDLED_FFMPEG_STAGED_PATH ?= $(JPACKAGE_INPUT_DIR)/$(BUNDLED_FFMPEG_APP_DIR)/ff
 BUNDLED_FFMPEG_APP_PATH ?= $(MACOS_APP_PATH)/Contents/app/$(BUNDLED_FFMPEG_APP_DIR)/ffmpeg
 MACOS_NOTARIZATION_ARTIFACT_DIR ?= $(DIST_DIR)/notarization
 MACOS_DMG_SHA256_PATH ?= $(MACOS_DMG_PATH).sha256
+MACOS_PRISTINE_APP_JAR_BASELINE ?= $(APP_OUTPUT_DIR)/.pristine-packaged-app.jar
 
 .PHONY: help install dev run-backend run-frontend \
 	format format-backend format-frontend \
@@ -42,7 +43,8 @@ MACOS_DMG_SHA256_PATH ?= $(MACOS_DMG_PATH).sha256
 	package-macos-release package-macos checksum-macos-dmg run-macos-app \
 	package-windows package-linux \
 	inspect-macos-app clean-packaging generate-macos-icon prepare-macos-input \
-	clean-macos-app-output validate-macos-packaging-input validate-macos-packaged-app \
+	clean-macos-app-output validate-macos-packaging-input \
+	validate-macos-pristine-packaged-app validate-macos-postprocessed-packaged-app validate-macos-packaged-app \
 	check-bundled-ffmpeg prepare-bundled-ffmpeg inspect-bundled-ffmpeg \
 	inspect-macos-signing-readiness test-macos-signing-readiness test-macos-release-pipeline \
 	check-macos check-macos-arm64 check-jpackage check-icon-tools \
@@ -241,24 +243,31 @@ package-macos-app: build-production clean-macos-app-output prepare-bundled-ffmpe
 		--arguments "$(SPRING_ARGS)" \
 		--icon "$(MACOS_ICON)" \
 		--jlink-options "$(JLINK_OPTIONS)"
-	@$(MAKE) validate-macos-packaged-app
+	@$(MAKE) validate-macos-pristine-packaged-app
 
-validate-macos-packaged-app: check-production-jar ## Verify the packaged app contains the current production JAR
+validate-macos-pristine-packaged-app: check-production-jar ## Verify the freshly packaged app matches the current production JAR exactly
 	@test -d "$(MACOS_APP_PATH)" || { echo "Missing app bundle: $(MACOS_APP_PATH). Run 'make package-macos-app' first."; exit 1; }
-	@bash -c '. "$(MACOS_PACKAGING_DIR)/scripts/app-jar.sh"; source_jar="$$(resolve_absolute_path "$$1")"; packaged_jar="$$(find_packaged_app_jar "$$2")"; assert_packaged_app_jar_matches_build "$$source_jar" "$$packaged_jar" "$$3" "$$4"' _ "$(JAR_PATH)" "$(MACOS_APP_PATH)" "$(APP_VERSION)" "$(ARTIFACT_ID)"
+	@bash -c '. "$(MACOS_PACKAGING_DIR)/scripts/app-jar.sh"; source_jar="$$(resolve_absolute_path "$$1")"; packaged_jar="$$(find_packaged_app_jar "$$2")"; baseline="$$(resolve_absolute_path "$$5")"; assert_packaged_app_jar_matches_build "$$source_jar" "$$packaged_jar" "$$3" "$$4" "$$baseline"' _ "$(JAR_PATH)" "$(MACOS_APP_PATH)" "$(APP_VERSION)" "$(ARTIFACT_ID)" "$(MACOS_PRISTINE_APP_JAR_BASELINE)"
+
+validate-macos-postprocessed-packaged-app: check-production-jar ## Verify only the nested SQLite JDBC archive changed after post-processing
+	@test -d "$(MACOS_APP_PATH)" || { echo "Missing app bundle: $(MACOS_APP_PATH). Run 'make package-macos-app' first."; exit 1; }
+	@bash -c '. "$(MACOS_PACKAGING_DIR)/scripts/app-jar.sh"; baseline="$$(resolve_absolute_path "$$1")"; packaged_jar="$$(find_packaged_app_jar "$$2")"; assert_sqlite_only_postprocessed_app_jar "$$baseline" "$$packaged_jar" "$$3" "$$4" "$${APPLE_DEVELOPER_ID_APPLICATION:-}" "$${APPLE_TEAM_ID:-}"' _ "$(MACOS_PRISTINE_APP_JAR_BASELINE)" "$(MACOS_APP_PATH)" "$(APP_VERSION)" "$(ARTIFACT_ID)"
+
+validate-macos-packaged-app: validate-macos-pristine-packaged-app ## Alias for pristine packaged app validation
 
 postprocess-macos-sqlite-native-libs: check-macos ## Sign SQLite native libraries embedded inside the packaged application JAR
 	@test -d "$(MACOS_APP_PATH)" || { echo "Missing app bundle: $(MACOS_APP_PATH). Run 'make package-macos-app' first."; exit 1; }
-	@$(MAKE) validate-macos-packaged-app
+	@$(MAKE) validate-macos-pristine-packaged-app
 	@packaging/macos/scripts/sign-sqlite-native-libs.sh "$(MACOS_APP_PATH)"
+	@$(MAKE) validate-macos-postprocessed-packaged-app
 
 sign-macos-app: check-macos ## Sign nested Mach-O code and the final existing macOS app bundle
 	@test -d "$(MACOS_APP_PATH)" || { echo "Missing app bundle: $(MACOS_APP_PATH). Run 'make package-macos-app' first."; exit 1; }
-	@$(MAKE) validate-macos-packaged-app
+	@$(MAKE) validate-macos-postprocessed-packaged-app
 	@packaging/macos/scripts/sign-app.sh "$(MACOS_APP_PATH)"
 
 verify-macos-signatures: check-macos ## Strictly verify all nested signatures and the final app bundle
-	@$(MAKE) validate-macos-packaged-app
+	@$(MAKE) validate-macos-postprocessed-packaged-app
 	@packaging/macos/scripts/verify-signatures.sh "$(MACOS_APP_PATH)"
 
 package-macos-dmg: package-macos-app ## Create an unsigned development DMG; do not use for signed releases
@@ -276,7 +285,7 @@ package-macos-dmg: package-macos-app ## Create an unsigned development DMG; do n
 
 package-macos-dmg-from-signed-app: check-macos-arm64 check-jpackage ## Create the release DMG from the already signed app without rebuilding it
 	@test -d "$(MACOS_APP_PATH)" || { echo "Missing signed app bundle: $(MACOS_APP_PATH). Run 'make package-macos-app' and 'make sign-macos-app' first."; exit 1; }
-	@$(MAKE) validate-macos-packaged-app
+	@$(MAKE) validate-macos-postprocessed-packaged-app
 	@packaging/macos/scripts/verify-signatures.sh "$(MACOS_APP_PATH)" >/dev/null 2>&1 || { echo "Refusing to create DMG because the app is not signed with valid release signatures."; exit 1; }
 	@rm -f "$(MACOS_DMG_PATH)"
 	@mkdir -p "$(INSTALLER_OUTPUT_DIR)"

@@ -37,6 +37,7 @@ write_stub codesign '#!/usr/bin/env bash' \
   'if printf "%s\n" "$*" | grep -q -- "--sign"; then' \
   '  if [ -n "${STUB_CODESIGN_ARGS_LOG:-}" ]; then printf "%s\n" "$*" >>"${STUB_CODESIGN_ARGS_LOG}"; fi' \
   '  if [ "${STUB_CODESIGN_MISSING_IDENTITY:-0}" = "1" ]; then echo "error: The specified item could not be found in the keychain." >&2; exit 1; fi' \
+  '  if [ -f "$target" ]; then printf "\nsigned\n" >>"$target"; fi' \
   '  echo "$target" >>"${STUB_CODESIGN_SIGNED_LOG:?}"; exit 0' \
   'fi' \
   'if [ "${1:-}" = "-dv" ]; then' \
@@ -48,7 +49,7 @@ write_stub codesign '#!/usr/bin/env bash' \
   '  echo "CodeDirectory v=20500 size=1 flags=${STUB_FLAGS:-0x10000(runtime)} hashes=1+2 location=embedded" >&2' \
   '  exit 0' \
   'fi' \
-  'if [ "${STUB_ALL_SIGNED:-0}" = "1" ] || printf "%s\n" "${STUB_SIGNED_PATHS:-}" | grep -Fxq "$target"; then exit 0; fi' \
+  'if [ "${STUB_ALL_SIGNED:-0}" = "1" ] || { [ "${STUB_SQLITE_SIGNED:-0}" = "1" ] && printf "%s\n" "$target" | grep -Fq "/org/sqlite/native/Mac/" && printf "%s\n" "$target" | grep -Fq "/libsqlitejdbc.dylib"; } || printf "%s\n" "${STUB_SIGNED_PATHS:-}" | grep -Fxq "$target"; then exit 0; fi' \
   'if [ -n "${STUB_CODESIGN_SIGNED_LOG:-}" ] && [ -f "${STUB_CODESIGN_SIGNED_LOG}" ] && grep -Fxq "$target" "${STUB_CODESIGN_SIGNED_LOG}"; then exit 0; fi' \
   'echo "$target: code object is not signed at all" >&2' \
   'exit 1'
@@ -385,15 +386,81 @@ mkdir -p "$stale_sign/dist/app" "$stale_sign/target"
 make_fixture "$stale_sign/dist/app" "memoria-vault-0.1.1.jar"
 cp "$MAKE_TMP/target/memoria-vault-1.2.3.jar" "$stale_sign/target/memoria-vault-1.2.3.jar"
 set +e
-output="$(STUB_CODESIGN_SIGNED_LOG="$TMP_DIR/stale-sign-codesign.log" PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" make -f "$REPO_ROOT/Makefile" sign-macos-app DIST_DIR="$stale_sign/dist" JAR_PATH="$stale_sign/target/memoria-vault-1.2.3.jar" APP_VERSION=1.2.3 2>&1)"
+output="$(STUB_CODESIGN_SIGNED_LOG="$TMP_DIR/stale-sign-codesign.log" PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" make -f "$REPO_ROOT/Makefile" postprocess-macos-sqlite-native-libs DIST_DIR="$stale_sign/dist" JAR_PATH="$stale_sign/target/memoria-vault-1.2.3.jar" APP_VERSION=1.2.3 2>&1)"
 status=$?
 set -e
-[ "$status" -ne 0 ] || { echo "Expected signing to fail before codesign when packaged JAR freshness validation fails." >&2; exit 1; }
+[ "$status" -ne 0 ] || { echo "Expected SQLite post-processing to fail before codesign when packaged JAR freshness validation fails." >&2; exit 1; }
 assert_contains "$output" "Packaged application JAR version does not match the expected Maven version."
-test ! -f "$TMP_DIR/stale-sign-codesign.log" || { echo "Expected stale packaged JAR to fail before codesign runs." >&2; exit 1; }
+test ! -f "$TMP_DIR/stale-sign-codesign.log" || { echo "Expected stale packaged JAR to fail before SQLite codesign runs." >&2; exit 1; }
+
+cp "$MAKE_TMP/dist/app/Memoria Vault.app/Contents/app/memoria-vault-1.2.3.jar" "$MAKE_TMP/dist/app/.pristine-packaged-app.jar"
+STUB_ALL_SIGNED=1 STUB_CODESIGN_SIGNED_LOG="$TMP_DIR/make-sqlite-signed.log" PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" make -f "$REPO_ROOT/Makefile" validate-macos-postprocessed-packaged-app DIST_DIR="$MAKE_TMP/dist" JAR_PATH="$MAKE_TMP/target/memoria-vault-1.2.3.jar" APP_VERSION=1.2.3 >/dev/null 2>&1 && {
+  echo "Expected unchanged SQLite JDBC archive to fail post-processed validation." >&2
+  exit 1
+}
+STUB_ALL_SIGNED=1 STUB_CODESIGN_SIGNED_LOG="$TMP_DIR/make-sqlite-signed.log" PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" "$SCRIPT_DIR/sign-sqlite-native-libs.sh" "$MAKE_TMP/dist/app/Memoria Vault.app" >/dev/null
+postprocessed_output="$(STUB_ALL_SIGNED=1 PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" make -f "$REPO_ROOT/Makefile" validate-macos-postprocessed-packaged-app DIST_DIR="$MAKE_TMP/dist" JAR_PATH="$MAKE_TMP/target/memoria-vault-1.2.3.jar" APP_VERSION=1.2.3)"
+assert_contains "$postprocessed_output" "SQLite post-processing integrity: verified"
+assert_contains "$postprocessed_output" "Unexpected modified entries: 0"
+
+non_sqlite="$TMP_DIR/postprocessed-non-sqlite"
+mkdir -p "$non_sqlite/dist/app" "$non_sqlite/target"
+make_fixture "$non_sqlite/dist/app" "memoria-vault-1.2.3.jar"
+cp "$non_sqlite/dist/app/Memoria Vault.app/Contents/app/memoria-vault-1.2.3.jar" "$non_sqlite/target/memoria-vault-1.2.3.jar"
+cp "$non_sqlite/dist/app/Memoria Vault.app/Contents/app/memoria-vault-1.2.3.jar" "$non_sqlite/dist/app/.pristine-packaged-app.jar"
+STUB_ALL_SIGNED=1 STUB_CODESIGN_SIGNED_LOG="$TMP_DIR/non-sqlite-signed.log" PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" "$SCRIPT_DIR/sign-sqlite-native-libs.sh" "$non_sqlite/dist/app/Memoria Vault.app" >/dev/null
+non_sqlite_work="$TMP_DIR/non-sqlite-entry-work"
+mkdir -p "$non_sqlite_work/BOOT-INF/classes/static"
+printf 'changed\n' >"$non_sqlite_work/BOOT-INF/classes/static/index.html"
+(
+  cd "$non_sqlite_work"
+  zip -q "$non_sqlite/dist/app/Memoria Vault.app/Contents/app/memoria-vault-1.2.3.jar" BOOT-INF/classes/static/index.html
+)
+set +e
+output="$(STUB_ALL_SIGNED=1 PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" make -f "$REPO_ROOT/Makefile" validate-macos-postprocessed-packaged-app DIST_DIR="$non_sqlite/dist" JAR_PATH="$non_sqlite/target/memoria-vault-1.2.3.jar" APP_VERSION=1.2.3 2>&1)"
+status=$?
+set -e
+[ "$status" -ne 0 ] || { echo "Expected non-SQLite archive mutation to fail post-processed validation." >&2; exit 1; }
+assert_contains "$output" "Post-processed application JAR changed entries outside SQLite JDBC."
+
+missing_sqlite="$TMP_DIR/postprocessed-missing-sqlite"
+mkdir -p "$missing_sqlite/dist/app" "$missing_sqlite/target"
+make_fixture "$missing_sqlite/dist/app" "memoria-vault-1.2.3.jar"
+cp "$missing_sqlite/dist/app/Memoria Vault.app/Contents/app/memoria-vault-1.2.3.jar" "$missing_sqlite/target/memoria-vault-1.2.3.jar"
+cp "$missing_sqlite/dist/app/Memoria Vault.app/Contents/app/memoria-vault-1.2.3.jar" "$missing_sqlite/dist/app/.pristine-packaged-app.jar"
+STUB_ALL_SIGNED=1 STUB_CODESIGN_SIGNED_LOG="$TMP_DIR/missing-sqlite-signed.log" PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" "$SCRIPT_DIR/sign-sqlite-native-libs.sh" "$missing_sqlite/dist/app/Memoria Vault.app" >/dev/null
+missing_work="$TMP_DIR/missing-sqlite-work"
+mkdir -p "$missing_work/outer" "$missing_work/sqlite"
+(
+  cd "$missing_work/outer"
+  jar xf "$missing_sqlite/dist/app/Memoria Vault.app/Contents/app/memoria-vault-1.2.3.jar" BOOT-INF/lib/sqlite-jdbc-test.jar
+)
+(
+  cd "$missing_work/sqlite"
+  jar xf "$missing_work/outer/BOOT-INF/lib/sqlite-jdbc-test.jar"
+  rm -f org/sqlite/native/Mac/x86_64/libsqlitejdbc.dylib
+  jar cf "$missing_work/outer/BOOT-INF/lib/sqlite-jdbc-test.jar" .
+)
+(
+  cd "$missing_work/outer"
+  zip -q "$missing_sqlite/dist/app/Memoria Vault.app/Contents/app/memoria-vault-1.2.3.jar" BOOT-INF/lib/sqlite-jdbc-test.jar
+)
+set +e
+output="$(STUB_ALL_SIGNED=1 PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" make -f "$REPO_ROOT/Makefile" validate-macos-postprocessed-packaged-app DIST_DIR="$missing_sqlite/dist" JAR_PATH="$missing_sqlite/target/memoria-vault-1.2.3.jar" APP_VERSION=1.2.3 2>&1)"
+status=$?
+set -e
+[ "$status" -ne 0 ] || { echo "Expected missing SQLite dylib to fail post-processed validation." >&2; exit 1; }
+assert_contains "$output" "Post-processed SQLite native library is missing."
 
 set +e
-output="$(PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" make -f "$REPO_ROOT/Makefile" package-macos-dmg-from-signed-app DIST_DIR="$MAKE_TMP/dist" JAR_PATH="$MAKE_TMP/target/memoria-vault-1.2.3.jar" APP_VERSION=1.2.3 JPACKAGE_VERSION=1.2.3 2>&1)"
+output="$(STUB_SQLITE_SIGNED=1 STUB_MISSING_AUTHORITY=1 PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" make -f "$REPO_ROOT/Makefile" validate-macos-postprocessed-packaged-app DIST_DIR="$MAKE_TMP/dist" JAR_PATH="$MAKE_TMP/target/memoria-vault-1.2.3.jar" APP_VERSION=1.2.3 2>&1)"
+status=$?
+set -e
+[ "$status" -ne 0 ] || { echo "Expected SQLite metadata mismatch to fail post-processed validation." >&2; exit 1; }
+assert_contains "$output" "SQLite native library Developer ID authority mismatch."
+
+set +e
+output="$(STUB_SQLITE_SIGNED=1 PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" make -f "$REPO_ROOT/Makefile" package-macos-dmg-from-signed-app DIST_DIR="$MAKE_TMP/dist" JAR_PATH="$MAKE_TMP/target/memoria-vault-1.2.3.jar" APP_VERSION=1.2.3 JPACKAGE_VERSION=1.2.3 2>&1)"
 status=$?
 set -e
 [ "$status" -ne 0 ] || { echo "Expected DMG packaging from unsigned app to fail." >&2; exit 1; }
