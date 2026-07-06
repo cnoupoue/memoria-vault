@@ -286,6 +286,28 @@ macOS app images contain more than the top-level `.app` bundle. The jpackage lau
 runtime, bundled FFmpeg, and any native Java libraries or frameworks are separate Mach-O binaries
 that must be identified and signed individually before the final app bundle is signed.
 
+Unsigned beta packaging and signed release packaging are separate paths. `make package-macos` creates
+an unsigned local app and development DMG. It is useful for packaging smoke tests, but it is not a
+release artifact.
+
+The signed release path is:
+
+```text
+1. make package-macos-app
+2. make sign-macos-app
+3. make verify-macos-signatures
+4. make package-macos-dmg-from-signed-app
+5. make sign-macos-dmg
+6. make notarize-macos-dmg
+7. make staple-macos-dmg
+8. make verify-macos-notarization
+9. make checksum-macos-dmg
+```
+
+`package-macos-dmg-from-signed-app` must only consume the already signed app image. It must not
+depend on `package-macos-app`, because rebuilding the app after signing invalidates the release
+sequence.
+
 Use inspection mode during unsigned development:
 
 ```bash
@@ -303,9 +325,29 @@ make verify-macos-signatures
 ```
 
 Strict mode fails on unsigned or invalid nested signatures, unsafe dynamic dependencies, and final
-`.app` bundle verification failures. It is expected to fail until Developer ID Application signing is
-implemented. If `APPLE_DEVELOPER_ID_APPLICATION` is set, the inspection also checks signed binaries
-against the expected Team Identifier or signing authority where macOS exposes that metadata.
+`.app` bundle verification failures. If `APPLE_DEVELOPER_ID_APPLICATION` is set, verification also
+checks signed binaries against the expected Team Identifier or signing authority where macOS exposes
+that metadata.
+
+GitHub Actions release signing requires these repository secrets by name only:
+
+```text
+APPLE_DEVELOPER_ID_APPLICATION
+APPLE_CERTIFICATE_P12_BASE64
+APPLE_CERTIFICATE_PASSWORD
+APPLE_ID
+APPLE_TEAM_ID
+APPLE_APP_SPECIFIC_PASSWORD
+```
+
+Do not print, echo, inspect, or commit secret values. Documentation examples use `xxx` for passwords
+and `${{ secrets.SECRET_NAME }}` inside workflow files.
+
+When notarization fails, `packaging/macos/scripts/notarize-dmg.sh` records the Apple submission ID,
+status, notarytool JSON response, and Apple notarization log under `dist/notarization/`. The release
+workflow uploads that directory as `memoria-vault-macos-notarization-<tag>` only on failure. The
+GitHub Release upload step runs after notarization, stapling, Gatekeeper validation, and checksum
+generation, so no release asset is published if Apple rejects notarization.
 
 To add Windows support:
 

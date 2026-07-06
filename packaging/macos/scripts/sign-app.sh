@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+APP_PATH="${1:-}"
+IDENTITY="${APPLE_DEVELOPER_ID_APPLICATION:-}"
+KEYCHAIN_PATH="${APPLE_CODESIGN_KEYCHAIN:-}"
+
+if [ -z "$APP_PATH" ]; then
+  echo "Usage: APPLE_DEVELOPER_ID_APPLICATION=<identity> $0 path/to/Memoria Vault.app" >&2
+  exit 2
+fi
+
+if [ -z "$IDENTITY" ]; then
+  echo "APPLE_DEVELOPER_ID_APPLICATION is required." >&2
+  exit 2
+fi
+
+if [ "$(uname -s)" != "Darwin" ]; then
+  echo "Developer ID signing requires macOS." >&2
+  exit 1
+fi
+
+if [ ! -d "$APP_PATH" ]; then
+  echo "Missing app bundle: $APP_PATH" >&2
+  exit 1
+fi
+
+require_tool() {
+  command -v "$1" >/dev/null 2>&1 || {
+    echo "Missing required tool: $1" >&2
+    exit 1
+  }
+}
+
+for tool in find file codesign sort awk; do
+  require_tool "$tool"
+done
+
+is_macho() {
+  file "$1" 2>/dev/null | grep -Eq 'Mach-O|universal binary'
+}
+
+sign_one() {
+  target="$1"
+  rel="${target#"$APP_PATH/"}"
+  args=(--force --sign "$IDENTITY" --options runtime --timestamp)
+  if [ -n "$KEYCHAIN_PATH" ]; then
+    args+=(--keychain "$KEYCHAIN_PATH")
+  fi
+
+  echo "Signing nested code: $rel"
+  if ! codesign "${args[@]}" "$target"; then
+    echo "Failed to sign nested Mach-O code: $rel" >&2
+    exit 1
+  fi
+}
+
+FOUND_PATHS_FILE="$(mktemp "${TMPDIR:-/tmp}/memoriavault-sign-paths.XXXXXX")"
+SORTED_PATHS_FILE="$(mktemp "${TMPDIR:-/tmp}/memoriavault-sign-sorted.XXXXXX")"
+trap 'rm -f "$FOUND_PATHS_FILE" "$SORTED_PATHS_FILE"' EXIT
+
+find "$APP_PATH" -type f -print0 | while IFS= read -r -d '' candidate; do
+  if is_macho "$candidate"; then
+    printf '%s\0' "$candidate"
+  fi
+done >"$FOUND_PATHS_FILE"
+
+if [ ! -s "$FOUND_PATHS_FILE" ]; then
+  echo "No Mach-O code found inside app bundle." >&2
+  exit 1
+fi
+
+tr '\0' '\n' <"$FOUND_PATHS_FILE" | awk '
+  length($0) > 0 {
+    path = $0
+    depth = gsub("/", "/", path)
+    printf "%06d\t%s\n", 999999 - depth, $0
+  }
+' | sort | sed 's/^[0-9][0-9][0-9][0-9][0-9][0-9]	//' >"$SORTED_PATHS_FILE"
+
+TOTAL=0
+while IFS= read -r binary; do
+  case "$binary" in
+    "$APP_PATH/Contents/MacOS/"*)
+      ;;
+    "$APP_PATH/Contents/app/ffmpeg/ffmpeg")
+      ;;
+    "$APP_PATH/Contents/runtime/"*)
+      ;;
+    *".framework/"*|*.dylib|*.jnilib)
+      ;;
+  esac
+  sign_one "$binary"
+  TOTAL=$((TOTAL + 1))
+done <"$SORTED_PATHS_FILE"
+
+FFMPEG_PATH="$APP_PATH/Contents/app/ffmpeg/ffmpeg"
+if [ ! -f "$FFMPEG_PATH" ]; then
+  echo "Missing bundled FFmpeg: Contents/app/ffmpeg/ffmpeg" >&2
+  exit 1
+fi
+if ! is_macho "$FFMPEG_PATH"; then
+  echo "Bundled FFmpeg is not Mach-O code." >&2
+  exit 1
+fi
+
+echo "Signing bundled FFmpeg explicitly: Contents/app/ffmpeg/ffmpeg"
+sign_one "$FFMPEG_PATH"
+
+echo "Signing final app bundle: $(basename "$APP_PATH")"
+app_args=(--force --sign "$IDENTITY" --options runtime --timestamp)
+if [ -n "$KEYCHAIN_PATH" ]; then
+  app_args+=(--keychain "$KEYCHAIN_PATH")
+fi
+codesign "${app_args[@]}" "$APP_PATH"
+
+codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+echo "Signed $TOTAL nested Mach-O files and the final app bundle."

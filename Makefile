@@ -27,18 +27,23 @@ BUNDLED_FFMPEG_SOURCE ?= $(MACOS_PACKAGING_DIR)/ffmpeg/$(MACOS_ARCH)/ffmpeg
 BUNDLED_FFMPEG_APP_DIR ?= ffmpeg
 BUNDLED_FFMPEG_STAGED_PATH ?= $(JPACKAGE_INPUT_DIR)/$(BUNDLED_FFMPEG_APP_DIR)/ffmpeg
 BUNDLED_FFMPEG_APP_PATH ?= $(MACOS_APP_PATH)/Contents/app/$(BUNDLED_FFMPEG_APP_DIR)/ffmpeg
+MACOS_NOTARIZATION_ARTIFACT_DIR ?= $(DIST_DIR)/notarization
+MACOS_DMG_SHA256_PATH ?= $(MACOS_DMG_PATH).sha256
 
 .PHONY: help install dev run-backend run-frontend \
 	format format-backend format-frontend \
 	format-check format-check-backend format-check-frontend \
-	lint lint-frontend lint-branding lint-fix test test-backend test-frontend \
+	lint lint-frontend lint-branding lint-fix test test-backend test-frontend test-packaging \
 	build build-backend build-frontend build-production package-jar \
 	run-production verify-production inspect-jar \
-	package-macos-app package-macos-dmg package-macos run-macos-app \
+	package-macos-app sign-macos-app verify-macos-signatures \
+	package-macos-dmg package-macos-dmg-from-signed-app sign-macos-dmg \
+	notarize-macos-dmg staple-macos-dmg verify-macos-notarization \
+	package-macos-release package-macos checksum-macos-dmg run-macos-app \
 	package-windows package-linux \
 	inspect-macos-app clean-packaging generate-macos-icon prepare-macos-input \
 	check-bundled-ffmpeg prepare-bundled-ffmpeg inspect-bundled-ffmpeg \
-	inspect-macos-signing-readiness verify-macos-signatures test-macos-signing-readiness \
+	inspect-macos-signing-readiness test-macos-signing-readiness test-macos-release-pipeline \
 	check-macos check-macos-arm64 check-jpackage check-icon-tools \
 	check-production-jar tag push-tag verify clean health
 
@@ -48,6 +53,9 @@ help: ## Show available commands
 	@echo "Production JAR: $(JAR_PATH)"
 	@echo ""
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@echo ""
+	@echo "Signed release path: package-macos-app -> sign-macos-app -> verify-macos-signatures -> package-macos-dmg-from-signed-app -> sign-macos-dmg -> notarize-macos-dmg -> staple-macos-dmg -> verify-macos-notarization"
+	@echo "Development packaging: package-macos builds an unsigned local DMG and is not a release artifact."
 	@echo ""
 
 install: ## Install root tooling and frontend dependencies
@@ -109,12 +117,15 @@ lint-fix: ## Automatically fix frontend lint issues where possible
 test: ## Run backend and frontend tests
 	$(MAKE) test-backend
 	$(MAKE) test-frontend
+	$(MAKE) test-packaging
 
 test-backend: ## Run Spring Boot tests
 	./mvnw test
 
 test-frontend: ## Run React and TypeScript tests
 	npm --prefix frontend run test
+
+test-packaging: test-macos-signing-readiness test-macos-release-pipeline ## Run packaging script tests without requiring Apple credentials
 
 build: ## Build separate development artifacts; use build-production for the standalone JAR
 	$(MAKE) build-backend
@@ -225,7 +236,14 @@ package-macos-app: prepare-bundled-ffmpeg generate-macos-icon check-macos-arm64 
 		--icon "$(MACOS_ICON)" \
 		--jlink-options "$(JLINK_OPTIONS)"
 
-package-macos-dmg: package-macos-app ## Create dist/installers/Memoria-Vault-<version>-macos-arm64.dmg
+sign-macos-app: check-macos ## Sign nested Mach-O code and the final existing macOS app bundle
+	@test -d "$(MACOS_APP_PATH)" || { echo "Missing app bundle: $(MACOS_APP_PATH). Run 'make package-macos-app' first."; exit 1; }
+	@packaging/macos/scripts/sign-app.sh "$(MACOS_APP_PATH)"
+
+verify-macos-signatures: check-macos ## Strictly verify all nested signatures and the final app bundle
+	@packaging/macos/scripts/verify-signatures.sh "$(MACOS_APP_PATH)"
+
+package-macos-dmg: package-macos-app ## Create an unsigned development DMG; do not use for signed releases
 	@rm -f "$(MACOS_DMG_PATH)"
 	@mkdir -p "$(INSTALLER_OUTPUT_DIR)"
 	jpackage \
@@ -238,7 +256,50 @@ package-macos-dmg: package-macos-app ## Create dist/installers/Memoria-Vault-<ve
 		--mac-package-identifier "$(APP_ID)"
 	@mv "$(INSTALLER_OUTPUT_DIR)/$(APP_NAME)-$(JPACKAGE_VERSION).dmg" "$(MACOS_DMG_PATH)"
 
-package-macos: package-macos-dmg ## Build the macOS app image and DMG
+package-macos-dmg-from-signed-app: check-macos-arm64 check-jpackage ## Create the release DMG from the already signed app without rebuilding it
+	@test -d "$(MACOS_APP_PATH)" || { echo "Missing signed app bundle: $(MACOS_APP_PATH). Run 'make package-macos-app' and 'make sign-macos-app' first."; exit 1; }
+	@packaging/macos/scripts/verify-signatures.sh "$(MACOS_APP_PATH)" >/dev/null 2>&1 || { echo "Refusing to create DMG because the app is not signed with valid release signatures."; exit 1; }
+	@rm -f "$(MACOS_DMG_PATH)"
+	@mkdir -p "$(INSTALLER_OUTPUT_DIR)"
+	jpackage \
+		--type dmg \
+		--dest "$(INSTALLER_OUTPUT_DIR)" \
+		--app-image "$(MACOS_APP_PATH)" \
+		--name "$(APP_NAME)" \
+		--app-version "$(JPACKAGE_VERSION)" \
+		--vendor "cnoupoue" \
+		--mac-package-identifier "$(APP_ID)"
+	@mv "$(INSTALLER_OUTPUT_DIR)/$(APP_NAME)-$(JPACKAGE_VERSION).dmg" "$(MACOS_DMG_PATH)"
+
+sign-macos-dmg: check-macos ## Sign the existing DMG with Developer ID
+	@test -f "$(MACOS_DMG_PATH)" || { echo "Missing DMG: $(MACOS_DMG_PATH). Run 'make package-macos-dmg-from-signed-app' first."; exit 1; }
+	@test -n "$${APPLE_DEVELOPER_ID_APPLICATION:-}" || { echo "APPLE_DEVELOPER_ID_APPLICATION is required."; exit 1; }
+	@if [ -n "$${APPLE_CODESIGN_KEYCHAIN:-}" ]; then \
+		codesign --force --sign "$${APPLE_DEVELOPER_ID_APPLICATION}" --options runtime --timestamp --keychain "$${APPLE_CODESIGN_KEYCHAIN}" "$(MACOS_DMG_PATH)"; \
+	else \
+		codesign --force --sign "$${APPLE_DEVELOPER_ID_APPLICATION}" --options runtime --timestamp "$(MACOS_DMG_PATH)"; \
+	fi
+	@codesign --verify --strict --verbose=2 "$(MACOS_DMG_PATH)"
+
+notarize-macos-dmg: check-macos ## Submit the already signed DMG and wait for Apple notarization acceptance
+	@test -f "$(MACOS_DMG_PATH)" || { echo "Missing signed DMG: $(MACOS_DMG_PATH). Run 'make sign-macos-dmg' first."; exit 1; }
+	@MACOS_NOTARIZATION_ARTIFACT_DIR="$(MACOS_NOTARIZATION_ARTIFACT_DIR)" packaging/macos/scripts/notarize-dmg.sh submit "$(MACOS_DMG_PATH)"
+
+staple-macos-dmg: check-macos ## Staple the accepted notarization ticket to the DMG
+	@test -f "$(MACOS_DMG_PATH)" || { echo "Missing notarized DMG: $(MACOS_DMG_PATH). Run 'make notarize-macos-dmg' first."; exit 1; }
+	@MACOS_NOTARIZATION_ARTIFACT_DIR="$(MACOS_NOTARIZATION_ARTIFACT_DIR)" packaging/macos/scripts/notarize-dmg.sh staple "$(MACOS_DMG_PATH)"
+
+verify-macos-notarization: check-macos ## Validate DMG signature, stapling, and Gatekeeper assessment
+	@test -f "$(MACOS_DMG_PATH)" || { echo "Missing stapled DMG: $(MACOS_DMG_PATH). Run 'make staple-macos-dmg' first."; exit 1; }
+	@MACOS_NOTARIZATION_ARTIFACT_DIR="$(MACOS_NOTARIZATION_ARTIFACT_DIR)" packaging/macos/scripts/notarize-dmg.sh verify "$(MACOS_DMG_PATH)"
+
+checksum-macos-dmg: ## Generate SHA-256 checksum for the final notarized DMG
+	@test -f "$(MACOS_DMG_PATH)" || { echo "Missing DMG: $(MACOS_DMG_PATH)."; exit 1; }
+	shasum -a 256 "$(MACOS_DMG_PATH)" > "$(MACOS_DMG_SHA256_PATH)"
+
+package-macos-release: package-macos-app sign-macos-app verify-macos-signatures package-macos-dmg-from-signed-app sign-macos-dmg notarize-macos-dmg staple-macos-dmg verify-macos-notarization checksum-macos-dmg ## Build, sign, notarize, staple, verify, and checksum the macOS release DMG
+
+package-macos: package-macos-dmg ## Build an unsigned local macOS app image and development DMG
 
 package-windows: ## Future work: Windows packaging is not implemented yet
 	@echo "Windows packaging is not implemented yet. See packaging/windows/README.md."
@@ -271,11 +332,11 @@ inspect-bundled-ffmpeg: inspect-macos-app ## Verify the generated macOS app cont
 inspect-macos-signing-readiness: check-macos ## List every Mach-O binary in the app bundle and report signing readiness without requiring signatures
 	@packaging/macos/scripts/inspect-signing-readiness.sh inspect "$(MACOS_APP_PATH)"
 
-verify-macos-signatures: check-macos ## Strict release-only verification; expected to fail until Developer ID signing is implemented
-	@packaging/macos/scripts/inspect-signing-readiness.sh verify "$(MACOS_APP_PATH)"
-
 test-macos-signing-readiness: ## Run shell tests for macOS signing-readiness inspection behavior
 	@packaging/macos/scripts/test-signing-readiness.sh
+
+test-macos-release-pipeline: ## Run shell tests for macOS signing, notarization, and Makefile release behavior
+	@packaging/macos/scripts/test-release-pipeline.sh
 
 clean-packaging: ## Remove generated packaging artifacts only
 	rm -rf "$(DIST_DIR)"

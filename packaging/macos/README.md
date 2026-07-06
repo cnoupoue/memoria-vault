@@ -15,10 +15,109 @@ The generated jpackage app image is expected to contain:
 - `Memoria Vault.app/Contents/app/ffmpeg/ffmpeg`
 - `Memoria Vault.app/Contents/runtime`
 
-## Signing readiness
+## Unsigned development packaging
 
-Developer ID signing and notarization are not implemented yet. The current packaging checks prepare
-for that work by identifying every embedded Mach-O binary that will need an individual signature.
+`make package-macos` is for local development only. It builds the production JAR, creates an
+unsigned app image, and creates an unsigned DMG. That DMG is useful for smoke testing packaging, but
+it is not a release artifact and is not uploaded by CI.
+
+Release DMG generation must happen after app signing. Do not rebuild or overwrite
+`dist/app/Memoria Vault.app` after `make sign-macos-app`.
+
+## Signed and notarized release packaging
+
+The release pipeline is intentionally split into deterministic stages:
+
+```text
+1. Build production JAR
+2. Build unsigned macOS app image
+3. Discover embedded Mach-O binaries
+4. Sign nested executable code from inside out
+5. Sign bundled FFmpeg explicitly
+6. Sign Java runtime native executables/libraries where needed
+7. Sign the final .app bundle
+8. Verify every nested signature
+9. Create DMG from the already signed .app
+10. Sign the DMG
+11. Submit DMG to Apple notarization
+12. Wait for final notarization status
+13. Retrieve Apple log automatically when notarization fails
+14. Staple the notarization ticket to the DMG
+15. Validate stapling and Gatekeeper assessment
+16. Generate SHA-256 checksum
+17. Publish the notarized DMG and checksum to GitHub Release
+```
+
+The Makefile targets are:
+
+```text
+package-macos-app
+sign-macos-app
+verify-macos-signatures
+package-macos-dmg-from-signed-app
+sign-macos-dmg
+notarize-macos-dmg
+staple-macos-dmg
+verify-macos-notarization
+package-macos-release
+```
+
+`package-macos-dmg-from-signed-app` verifies the existing app signature before creating the DMG and
+does not invoke `package-macos-app`.
+
+Required GitHub secrets:
+
+```text
+APPLE_DEVELOPER_ID_APPLICATION
+APPLE_CERTIFICATE_P12_BASE64
+APPLE_CERTIFICATE_PASSWORD
+APPLE_ID
+APPLE_TEAM_ID
+APPLE_APP_SPECIFIC_PASSWORD
+```
+
+The signing identity is read from `APPLE_DEVELOPER_ID_APPLICATION`. It is not hardcoded in scripts or
+workflow files.
+
+## Local signing test
+
+Run this before pushing a release tag when the Developer ID Application certificate is available
+locally:
+
+```bash
+make clean-packaging
+make package-macos-app
+APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Example Name (TEAMID)" \
+  make sign-macos-app
+make verify-macos-signatures
+make package-macos-dmg-from-signed-app
+APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Example Name (TEAMID)" \
+  make sign-macos-dmg
+```
+
+Local notarization is optional. Supply credentials only through environment variables or a
+Keychain-backed notarytool profile:
+
+```bash
+APPLE_ID="account@example.invalid" \
+APPLE_TEAM_ID="TEAMID" \
+APPLE_APP_SPECIFIC_PASSWORD="xxx" \
+make notarize-macos-dmg
+make staple-macos-dmg
+make verify-macos-notarization
+```
+
+Equivalent local command shape:
+
+```bash
+xcrun notarytool submit "$DMG" \
+  --apple-id "$APPLE_ID" \
+  --team-id "$APPLE_TEAM_ID" \
+  --password "xxx" \
+  --wait
+```
+
+## Signing readiness
 
 Run the non-blocking inspection after building the app image:
 
@@ -58,12 +157,13 @@ Strict mode:
 - verifies the final app bundle with `codesign --verify --deep --strict --verbose=4`.
 
 `verify-macos-signatures` is expected to fail until every nested binary and the final app bundle are
-signed with a Developer ID Application certificate.
+signed with a Developer ID Application certificate. Its normal CI summary does not print absolute
+local paths.
 
 Optional identity check:
 
 ```bash
-APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Cameron Noupoue (TEAMID)" \
+APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Example Name (TEAMID)" \
   make inspect-macos-signing-readiness
 ```
 
@@ -92,16 +192,20 @@ If FFmpeg is unsigned in development mode, the inspection prints:
 WARNING: Bundled FFmpeg is present and executable but is not yet signed.
 ```
 
-## Future signing checklist
+## Notarization failure diagnostics
 
-1. Build the app.
-2. Sign every nested executable and native library.
-3. Sign FFmpeg.
-4. Sign the final app bundle.
-5. Run `verify-macos-signatures`.
-6. Build/sign the DMG.
-7. Submit the DMG to Apple notarization.
-8. Staple and validate the notarization ticket.
+When Apple notarization is not accepted, `packaging/macos/scripts/notarize-dmg.sh` saves diagnostic
+files under `dist/notarization/`:
+
+- `submission-id.txt`
+- `status.txt`
+- `notarytool-submit.json`
+- `apple-notarization-log.json`, when Apple returns one
+- `signature-verification-summary.txt`, in GitHub Actions after signature verification
+
+The workflow uploads `dist/notarization/` only when the job fails. The release asset upload step is
+after notarization, stapling, final validation, and checksum generation, so no DMG is published when
+notarization fails.
 
 Future macOS Intel support should add a verified `x64` FFmpeg binary, update packaging checks,
 and add a separate release workflow or matrix entry.

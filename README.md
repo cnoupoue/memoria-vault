@@ -249,9 +249,25 @@ Before public distribution, maintainers must verify the FFmpeg source, architect
 make check-bundled-ffmpeg
 ```
 
-The package is intended for macOS Apple Silicon, and it is unsigned and not notarized yet. macOS may show a security warning for unsigned local builds. Code signing and notarization are planned future release steps.
+`make package-macos` is an unsigned development packaging path. macOS may show a security warning for unsigned local builds, and this target is not used to publish releases.
 
-Before future notarization work, inspect every embedded Mach-O binary in the app bundle:
+For signed releases, the app and DMG stages are separate so the signed app is not rebuilt before DMG creation:
+
+```text
+package-macos-app
+sign-macos-app
+verify-macos-signatures
+package-macos-dmg-from-signed-app
+sign-macos-dmg
+notarize-macos-dmg
+staple-macos-dmg
+verify-macos-notarization
+package-macos-release
+```
+
+Release order is: build the production JAR, build the unsigned app image, sign nested Mach-O code from inside out, sign FFmpeg explicitly, sign Java runtime native code where needed, sign the final app bundle, verify signatures, create the DMG from the signed app, sign the DMG, notarize, staple, validate, generate the checksum, then publish.
+
+Inspect every embedded Mach-O binary in the app bundle:
 
 ```bash
 make package-macos-app
@@ -266,7 +282,31 @@ Strict release verification is separate:
 make verify-macos-signatures
 ```
 
-`verify-macos-signatures` is intended for signed Developer ID builds and is expected to fail until signing is implemented. It rejects unsigned or invalid nested binaries, unsafe Homebrew or user-local dynamic dependencies, and verifies the final `.app` bundle with strict deep code-signature verification.
+`verify-macos-signatures` is intended for signed Developer ID builds. It rejects unsigned or invalid nested binaries, unsafe Homebrew or user-local dynamic dependencies, Team Identifier mismatches when available, and verifies the final `.app` bundle with strict deep code-signature verification.
+
+Local signing smoke test:
+
+```bash
+make clean-packaging
+make package-macos-app
+APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Example Name (TEAMID)" \
+  make sign-macos-app
+make verify-macos-signatures
+make package-macos-dmg-from-signed-app
+APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Example Name (TEAMID)" \
+  make sign-macos-dmg
+```
+
+Optional local notarization:
+
+```bash
+APPLE_ID="account@example.invalid" \
+APPLE_TEAM_ID="TEAMID" \
+APPLE_APP_SPECIFIC_PASSWORD="xxx" \
+make notarize-macos-dmg
+make staple-macos-dmg
+make verify-macos-notarization
+```
 
 The macOS package identifier is `be.cnoupoue.memoriavault`. Maintainers should treat upgrades from pre-release builds as a compatibility check before distribution.
 
@@ -281,31 +321,29 @@ git push origin v0.1.0
 
 `make tag` validates the version format, requires a clean `main` worktree synchronized with `origin/main`, checks for an existing local or remote tag, verifies that the Maven project version matches the release version or the matching `-SNAPSHOT` development version, runs `make verify`, and creates an annotated local tag.
 
-Pushing the tag triggers GitHub Actions, which builds the macOS Apple Silicon DMG and creates a GitHub Release automatically. The release page includes:
+Pushing the tag triggers GitHub Actions, which builds the macOS Apple Silicon DMG, signs it with Developer ID, notarizes it with Apple, staples and validates it, then creates or updates the GitHub Release assets. The release page includes:
 
 ```text
 Memoria-Vault-0.1.0-macos-arm64.dmg
 Memoria-Vault-0.1.0-macos-arm64.dmg.sha256
 ```
 
-The release workflow requires:
+The release workflow requires these GitHub secrets by name:
 
-* A valid bundled FFmpeg binary and complete provenance metadata.
-* macOS arm64 packaging compatibility on the GitHub Actions runner.
-* Java 21 and Node.js 22 dependency installation through the lockfiles.
+```text
+APPLE_DEVELOPER_ID_APPLICATION
+APPLE_CERTIFICATE_P12_BASE64
+APPLE_CERTIFICATE_PASSWORD
+APPLE_ID
+APPLE_TEAM_ID
+APPLE_APP_SPECIFIC_PASSWORD
+```
 
-The package is Apple Silicon only. Signing and notarization are not included yet, so macOS may show a security warning.
+It also requires a valid bundled FFmpeg binary and complete provenance metadata, macOS arm64 packaging compatibility on the GitHub Actions runner, and Java 21 plus Node.js 22 dependency installation through the lockfiles.
 
-Future signing checklist:
+If Apple notarization fails, the workflow retrieves the Apple notarization log automatically and uploads the safe diagnostics under the `memoria-vault-macos-notarization-<tag>` artifact. No release asset is published when notarization fails.
 
-1. Build the app.
-2. Sign every nested executable and native library.
-3. Sign FFmpeg.
-4. Sign the final app bundle.
-5. Run `verify-macos-signatures`.
-6. Build/sign the DMG.
-7. Submit the DMG to Apple notarization.
-8. Staple and validate the notarization ticket.
+The package is Apple Silicon only.
 
 To publish with the optional helper instead of typing the push command directly:
 
