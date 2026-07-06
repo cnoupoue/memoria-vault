@@ -36,6 +36,24 @@ if [ ! -d "$APP_PATH" ]; then
   exit 1
 fi
 
+resolve_absolute_path() {
+  target="$1"
+
+  if [ -d "$target" ]; then
+    (
+      cd "$target"
+      pwd -P
+    )
+  else
+    (
+      cd "$(dirname "$target")"
+      printf '%s/%s\n' "$(pwd -P)" "$(basename "$target")"
+    )
+  fi
+}
+
+APP_PATH="$(resolve_absolute_path "$APP_PATH")"
+
 require_tool() {
   command -v "$1" >/dev/null 2>&1 || {
     echo "Missing required tool: $1" >&2
@@ -43,7 +61,7 @@ require_tool() {
   }
 }
 
-for tool in find file jar codesign mktemp zip; do
+for tool in find file jar codesign mktemp zip unzip; do
   require_tool "$tool"
 done
 
@@ -101,9 +119,19 @@ verify_file() {
   fi
 }
 
-WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/memoriavault-sqlite-sign.XXXXXX")"
+WORK_DIR="$(resolve_absolute_path "$(mktemp -d "${TMPDIR:-/tmp}/memoriavault-sqlite-sign.XXXXXX")")"
 SUMMARY_FILE="$WORK_DIR/sqlite-native-signing-summary.txt"
-trap 'rm -rf "$WORK_DIR"' EXIT
+APP_JAR_BACKUP=""
+
+cleanup() {
+  status=$?
+  if [ "$status" -ne 0 ] && [ -n "$APP_JAR_BACKUP" ] && [ -f "$APP_JAR_BACKUP" ] && [ -n "${APP_JAR:-}" ]; then
+    cp "$APP_JAR_BACKUP" "$APP_JAR" 2>/dev/null || true
+  fi
+  rm -rf "$WORK_DIR"
+  exit "$status"
+}
+trap cleanup EXIT
 : >"$SUMMARY_FILE"
 
 APP_JAR="$(find "$APP_PATH/Contents/app" -maxdepth 1 -type f -name '*.jar' -print | head -n 1)"
@@ -111,6 +139,9 @@ if [ -z "$APP_JAR" ]; then
   echo "Missing packaged application JAR in app bundle." >&2
   exit 1
 fi
+APP_JAR="$(resolve_absolute_path "$APP_JAR")"
+APP_JAR_BACKUP="$WORK_DIR/$(basename "$APP_JAR").backup"
+cp "$APP_JAR" "$APP_JAR_BACKUP"
 
 APP_JAR_WORK="$WORK_DIR/app-jar"
 mkdir -p "$APP_JAR_WORK"
@@ -128,7 +159,10 @@ if [ ! -s "$SQLITE_JARS_FILE" ]; then
 fi
 
 SIGNED_COUNT=0
+UPDATED_SQLITE_ENTRIES="$WORK_DIR/updated-sqlite-entries.txt"
+: >"$UPDATED_SQLITE_ENTRIES"
 while IFS= read -r sqlite_jar; do
+  sqlite_jar="$(resolve_absolute_path "$sqlite_jar")"
   sqlite_name="$(basename "$sqlite_jar")"
   sqlite_work="$WORK_DIR/sqlite-${sqlite_name%.jar}"
   mkdir -p "$sqlite_work"
@@ -165,10 +199,16 @@ while IFS= read -r sqlite_jar; do
   )
 
   sqlite_rel="${sqlite_jar#"$APP_JAR_WORK/"}"
+  printf '%s\n' "$sqlite_rel" >>"$UPDATED_SQLITE_ENTRIES"
   (
     cd "$APP_JAR_WORK"
-    zip -0 -q "$APP_JAR" "$sqlite_rel"
-  )
+    zip -0 -q -u "$APP_JAR" "$sqlite_rel"
+  ) || {
+    cp "$APP_JAR_BACKUP" "$APP_JAR" 2>/dev/null || true
+    echo "Unable to update packaged SQLite JDBC archive." >&2
+    echo "Outer application archive was not modified successfully." >&2
+    exit 1
+  }
 done <"$SQLITE_JARS_FILE"
 
 if [ "$SIGNED_COUNT" -lt 2 ]; then
@@ -176,14 +216,64 @@ if [ "$SIGNED_COUNT" -lt 2 ]; then
   exit 1
 fi
 
+test -f "$APP_JAR" || {
+  cp "$APP_JAR_BACKUP" "$APP_JAR" 2>/dev/null || true
+  echo "Unable to update packaged SQLite JDBC archive." >&2
+  echo "Outer application archive was not modified successfully." >&2
+  exit 1
+}
+
+unzip -tq "$APP_JAR" >/dev/null || {
+  cp "$APP_JAR_BACKUP" "$APP_JAR" 2>/dev/null || true
+  echo "Unable to update packaged SQLite JDBC archive." >&2
+  echo "Outer application archive was not modified successfully." >&2
+  exit 1
+}
+
 jar tf "$APP_JAR" | grep -qx 'BOOT-INF/classes/static/index.html' || {
+  cp "$APP_JAR_BACKUP" "$APP_JAR" 2>/dev/null || true
   echo "Modified application JAR failed packaged asset verification." >&2
   exit 1
 }
+
+while IFS= read -r sqlite_entry; do
+  unzip -l "$APP_JAR" | grep -F "$sqlite_entry" >/dev/null || {
+    cp "$APP_JAR_BACKUP" "$APP_JAR" 2>/dev/null || true
+    echo "Unable to update packaged SQLite JDBC archive." >&2
+    echo "Outer application archive was not modified successfully." >&2
+    exit 1
+  }
+
+  verify_outer="$WORK_DIR/reverify-outer-$(basename "$sqlite_entry" .jar)"
+  verify_sqlite="$WORK_DIR/reverify-sqlite-$(basename "$sqlite_entry" .jar)"
+  mkdir -p "$verify_outer" "$verify_sqlite"
+  (
+    cd "$verify_outer"
+    jar xf "$APP_JAR" "$sqlite_entry"
+  )
+  (
+    cd "$verify_sqlite"
+    jar xf "$verify_outer/$sqlite_entry"
+  )
+
+  for arch in aarch64 x86_64; do
+    dylib="$verify_sqlite/org/sqlite/native/Mac/$arch/libsqlitejdbc.dylib"
+    test -f "$dylib" || {
+      cp "$APP_JAR_BACKUP" "$APP_JAR" 2>/dev/null || true
+      echo "Unable to update packaged SQLite JDBC archive." >&2
+      echo "Outer application archive was not modified successfully." >&2
+      exit 1
+    }
+    verify_file "$dylib" "$sqlite_entry/org/sqlite/native/Mac/$arch/libsqlitejdbc.dylib"
+  done
+done <"$UPDATED_SQLITE_ENTRIES"
 
 if [ -n "$SUMMARY_DIR" ]; then
   mkdir -p "$SUMMARY_DIR"
   cp "$SUMMARY_FILE" "$SUMMARY_DIR/sqlite-native-signing-summary.txt"
 fi
+
+rm -f "$APP_JAR_BACKUP"
+APP_JAR_BACKUP=""
 
 echo "Signed $SIGNED_COUNT SQLite native libraries inside the packaged application JAR."

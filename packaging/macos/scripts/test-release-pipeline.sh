@@ -8,6 +8,8 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 
 STUB_DIR="$TMP_DIR/bin"
 mkdir -p "$STUB_DIR"
+FAIL_ZIP_DIR="$TMP_DIR/fail-zip-bin"
+mkdir -p "$FAIL_ZIP_DIR"
 
 write_stub() {
   path="$1"
@@ -74,6 +76,9 @@ write_stub jpackage '#!/usr/bin/env bash' \
   'fi' \
   'exit 0'
 
+printf '%s\n' '#!/usr/bin/env bash' 'echo "zip synthetic failure" >&2' 'exit 15' >"$FAIL_ZIP_DIR/zip"
+chmod +x "$FAIL_ZIP_DIR/zip"
+
 make_fixture() {
   fixture="$1"
   mkdir -p "$fixture/Memoria Vault.app/Contents/MacOS"
@@ -100,11 +105,14 @@ make_fixture() {
 assert_contains() {
   haystack="$1"
   needle="$2"
-  if ! printf '%s\n' "$haystack" | grep -Fq "$needle"; then
+  case "$haystack" in
+    *"$needle"*) return 0 ;;
+  esac
+  {
     echo "Expected output to contain: $needle" >&2
     echo "$haystack" >&2
     exit 1
-  fi
+  }
 }
 
 mtime() {
@@ -137,14 +145,44 @@ assert_contains "$output" "Check that the certificate private key is available a
 
 fixture="$TMP_DIR/sign-sqlite"
 make_fixture "$fixture"
-STUB_CODESIGN_SIGNED_LOG="$TMP_DIR/sqlite-signed.log" STUB_CODESIGN_ARGS_LOG="$TMP_DIR/sqlite-signed-args.log" PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" KEYCHAIN_PATH="$TMP_DIR/signing.keychain-db" "$SCRIPT_DIR/sign-sqlite-native-libs.sh" "$fixture/Memoria Vault.app" >/dev/null
+STUB_ALL_SIGNED=1 STUB_CODESIGN_SIGNED_LOG="$TMP_DIR/sqlite-signed.log" STUB_CODESIGN_ARGS_LOG="$TMP_DIR/sqlite-signed-args.log" PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" KEYCHAIN_PATH="$TMP_DIR/signing.keychain-db" "$SCRIPT_DIR/sign-sqlite-native-libs.sh" "$fixture/Memoria Vault.app" >/dev/null
 grep -Fq "libsqlitejdbc.dylib" "$TMP_DIR/sqlite-signed.log" || { echo "Expected SQLite native libraries to be signed." >&2; exit 1; }
+unzip -tq "$fixture/Memoria Vault.app/Contents/app/memoria-vault-test.jar" >/dev/null || { echo "Expected modified outer app JAR to pass unzip validation." >&2; exit 1; }
 sqlite_check="$TMP_DIR/sqlite-check"
 mkdir -p "$sqlite_check/app" "$sqlite_check/sqlite"
 (cd "$sqlite_check/app" && jar xf "$fixture/Memoria Vault.app/Contents/app/memoria-vault-test.jar" BOOT-INF/lib/sqlite-jdbc-test.jar)
 (cd "$sqlite_check/sqlite" && jar xf "$sqlite_check/app/BOOT-INF/lib/sqlite-jdbc-test.jar")
 test -f "$sqlite_check/sqlite/org/sqlite/native/Mac/aarch64/libsqlitejdbc.dylib" || { echo "Expected arm64 SQLite dylib to remain in app JAR." >&2; exit 1; }
 test -f "$sqlite_check/sqlite/org/sqlite/native/Mac/x86_64/libsqlitejdbc.dylib" || { echo "Expected x86_64 SQLite dylib to remain in app JAR." >&2; exit 1; }
+
+fixture="$TMP_DIR/sign-sqlite-other-cwd"
+make_fixture "$fixture"
+(
+  cd "$fixture"
+  STUB_ALL_SIGNED=1 STUB_CODESIGN_SIGNED_LOG="$TMP_DIR/sqlite-other-cwd-signed.log" PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" KEYCHAIN_PATH="$TMP_DIR/signing.keychain-db" "$SCRIPT_DIR/sign-sqlite-native-libs.sh" "Memoria Vault.app" >/dev/null
+)
+grep -Fq "libsqlitejdbc.dylib" "$TMP_DIR/sqlite-other-cwd-signed.log" || { echo "Expected SQLite signing to work from an arbitrary current directory." >&2; exit 1; }
+
+fixture="$TMP_DIR/sign-sqlite-zip-fails"
+make_fixture "$fixture"
+outer_jar="$fixture/Memoria Vault.app/Contents/app/memoria-vault-test.jar"
+before_cksum="$(cksum "$outer_jar")"
+set +e
+output="$(STUB_ALL_SIGNED=1 STUB_CODESIGN_SIGNED_LOG="$TMP_DIR/sqlite-fail-signed.log" PATH="$FAIL_ZIP_DIR:$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" KEYCHAIN_PATH="$TMP_DIR/signing.keychain-db" "$SCRIPT_DIR/sign-sqlite-native-libs.sh" "$fixture/Memoria Vault.app" 2>&1)"
+status=$?
+set -e
+[ "$status" -ne 0 ] || { echo "Expected SQLite archive update failure to fail the script." >&2; exit 1; }
+after_cksum="$(cksum "$outer_jar")"
+[ "$before_cksum" = "$after_cksum" ] || { echo "Expected failed SQLite archive update to restore the original outer JAR." >&2; exit 1; }
+assert_contains "$output" "Unable to update packaged SQLite JDBC archive."
+assert_contains "$output" "Outer application archive was not modified successfully."
+case "$output" in
+  *"$TMP_DIR"*)
+    echo "Expected SQLite archive update failure output to avoid unsafe temporary absolute paths." >&2
+    echo "$output" >&2
+    exit 1
+    ;;
+esac
 
 fixture="$TMP_DIR/verify-unsigned"
 make_fixture "$fixture"
