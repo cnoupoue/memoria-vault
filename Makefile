@@ -30,6 +30,7 @@ BUNDLED_FFMPEG_APP_PATH ?= $(MACOS_APP_PATH)/Contents/app/$(BUNDLED_FFMPEG_APP_D
 MACOS_NOTARIZATION_ARTIFACT_DIR ?= $(DIST_DIR)/notarization
 MACOS_DMG_SHA256_PATH ?= $(MACOS_DMG_PATH).sha256
 MACOS_PRISTINE_APP_JAR_BASELINE ?= $(APP_OUTPUT_DIR)/.pristine-packaged-app.jar
+MACOS_ENTITLEMENTS_PATH ?= $(MACOS_PACKAGING_DIR)/entitlements/memoria-vault.entitlements.plist
 
 .PHONY: help install dev run-backend run-frontend \
 	format format-backend format-frontend \
@@ -264,11 +265,11 @@ postprocess-macos-sqlite-native-libs: check-macos ## Sign SQLite native librarie
 sign-macos-app: check-macos ## Sign nested Mach-O code and the final existing macOS app bundle
 	@test -d "$(MACOS_APP_PATH)" || { echo "Missing app bundle: $(MACOS_APP_PATH). Run 'make package-macos-app' first."; exit 1; }
 	@$(MAKE) validate-macos-postprocessed-packaged-app
-	@packaging/macos/scripts/sign-app.sh "$(MACOS_APP_PATH)"
+	@MACOS_ENTITLEMENTS_PATH="$(MACOS_ENTITLEMENTS_PATH)" packaging/macos/scripts/sign-app.sh "$(MACOS_APP_PATH)"
 
 verify-macos-signatures: check-macos ## Strictly verify all nested signatures and the final app bundle
 	@$(MAKE) validate-macos-postprocessed-packaged-app
-	@packaging/macos/scripts/verify-signatures.sh "$(MACOS_APP_PATH)"
+	@MACOS_ENTITLEMENTS_PATH="$(MACOS_ENTITLEMENTS_PATH)" packaging/macos/scripts/verify-signatures.sh "$(MACOS_APP_PATH)"
 
 package-macos-dmg: package-macos-app ## Create an unsigned development DMG; do not use for signed releases
 	@rm -f "$(MACOS_DMG_PATH)"
@@ -286,7 +287,7 @@ package-macos-dmg: package-macos-app ## Create an unsigned development DMG; do n
 package-macos-dmg-from-signed-app: check-macos-arm64 ## Create the release DMG from the already signed app without rebuilding it
 	@test -d "$(MACOS_APP_PATH)" || { echo "Signed macOS app is missing or invalid. Refusing to create a DMG."; exit 1; }
 	@$(MAKE) validate-macos-postprocessed-packaged-app
-	@packaging/macos/scripts/verify-signatures.sh "$(MACOS_APP_PATH)" >/dev/null 2>&1 || { echo "Signed macOS app is missing or invalid. Refusing to create a DMG."; exit 1; }
+	@MACOS_ENTITLEMENTS_PATH="$(MACOS_ENTITLEMENTS_PATH)" packaging/macos/scripts/verify-signatures.sh "$(MACOS_APP_PATH)" >/dev/null 2>&1 || { echo "Signed macOS app is missing or invalid. Refusing to create a DMG."; exit 1; }
 	@packaging/macos/scripts/create-dmg.sh "$(MACOS_APP_PATH)" "$(MACOS_DMG_PATH)" "$(APP_NAME)"
 
 sign-macos-dmg: check-macos ## Sign the existing DMG with Developer ID
@@ -302,7 +303,7 @@ sign-macos-dmg: check-macos ## Sign the existing DMG with Developer ID
 verify-macos-dmg-signatures: check-macos ## Mount the DMG and verify the app inside before notarization
 	@test -f "$(MACOS_DMG_PATH)" || { echo "Missing signed DMG: $(MACOS_DMG_PATH). Run 'make sign-macos-dmg' first."; exit 1; }
 	@test -d "$(MACOS_APP_PATH)" || { echo "Missing source signed app bundle: $(MACOS_APP_PATH)."; exit 1; }
-	@packaging/macos/scripts/verify-dmg-signatures.sh "$(MACOS_DMG_PATH)" "$(MACOS_APP_PATH)"
+	@MACOS_ENTITLEMENTS_PATH="$(MACOS_ENTITLEMENTS_PATH)" packaging/macos/scripts/verify-dmg-signatures.sh "$(MACOS_DMG_PATH)" "$(MACOS_APP_PATH)"
 
 notarize-macos-dmg: check-macos ## Submit the already signed DMG and wait for Apple notarization acceptance
 	@test -f "$(MACOS_DMG_PATH)" || { echo "Missing signed DMG: $(MACOS_DMG_PATH). Run 'make sign-macos-dmg' first."; exit 1; }

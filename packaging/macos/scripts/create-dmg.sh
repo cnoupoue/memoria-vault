@@ -42,6 +42,7 @@ echo "Source app signature: Developer ID verified."
 echo "Source app bundle: $APP_NAME"
 
 ditto --rsrc --extattr "$APP_PATH" "$STAGING_DIR/$APP_NAME"
+ln -s /Applications "$STAGING_DIR/Applications"
 
 hdiutil create \
   -volname "$VOLUME_NAME" \

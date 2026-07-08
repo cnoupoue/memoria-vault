@@ -109,6 +109,16 @@ security find-identity -v -p codesigning
 The expected Developer ID identity should be listed. If it is not listed locally, fix the certificate
 and private key in Keychain Access before creating the `.p12` secret.
 
+The signed app uses Hardened Runtime plus the minimum JVM startup entitlements in
+`entitlements/memoria-vault.entitlements.plist`:
+
+- `com.apple.security.cs.allow-jit`
+- `com.apple.security.cs.allow-unsigned-executable-memory`
+
+These entitlements are applied to the outer app bundle, the jpackage launcher, the bundled `java`
+executable, and `libjvm.dylib`. The stricter verification scripts fail the release if those JVM
+entitlements are missing.
+
 ## Local signing test
 
 Run this before pushing a release tag when the Developer ID Application certificate is available
@@ -127,6 +137,17 @@ make package-macos-dmg-from-signed-app
 APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Example Name (TEAMID)" \
   make sign-macos-dmg
 ```
+
+After local signing, run a launch smoke test before notarizing or publishing:
+
+```bash
+open "dist/app/Memoria Vault.app"
+sleep 8
+pgrep -fl "Memoria Vault|java" || true
+```
+
+If the app exits immediately, inspect the latest macOS crash report for `Memoria Vault` before
+creating a release DMG.
 
 Local notarization is optional. Supply credentials only through environment variables or a
 Keychain-backed notarytool profile:
@@ -186,6 +207,7 @@ Strict mode:
 - requires `TeamIdentifier` to match `APPLE_TEAM_ID`, or the Team ID parsed from the signing identity;
 - requires a secure timestamp;
 - requires the Hardened Runtime `runtime` flag for Mach-O code;
+- requires JVM startup entitlements on the app bundle, launcher, bundled `java`, and `libjvm.dylib`;
 - verifies bundled FFmpeg with `codesign --verify --strict`;
 - verifies native SQLite libraries embedded inside the packaged `sqlite-jdbc-*.jar`;
 - rejects dynamic dependencies that point to Homebrew, user-local, temporary, or mounted-volume
