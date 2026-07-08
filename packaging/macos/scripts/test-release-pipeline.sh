@@ -63,6 +63,7 @@ write_stub codesign '#!/usr/bin/env bash' \
   'exit 1'
 write_stub xcrun '#!/usr/bin/env bash' \
   'tool="${1:-}"; shift || true' \
+  'if [ -n "${STUB_XCRUN_LOG:-}" ]; then printf "%s %s\n" "$tool" "${1:-}" >>"${STUB_XCRUN_LOG}"; fi' \
   'case "$tool" in' \
   '  notarytool)' \
   '    action="${1:-}"; shift || true' \
@@ -409,12 +410,26 @@ fixture="$TMP_DIR/notary"
 mkdir -p "$fixture"
 : >"$fixture/test.dmg"
 set +e
+output="$(PATH="$STUB_DIR:$PATH" MACOS_NOTARIZATION_ARTIFACT_DIR="$fixture/artifacts" "$SCRIPT_DIR/notarize-dmg.sh" submit "$fixture/test.dmg" 2>&1)"
+status=$?
+set -e
+[ "$status" -ne 0 ] || { echo "Expected notarization submit to require credentials." >&2; exit 1; }
+assert_contains "$output" "Notarization credentials are required through environment variables or APPLE_NOTARYTOOL_PROFILE."
+set +e
 output="$(PATH="$STUB_DIR:$PATH" APPLE_ID="test@example.invalid" APPLE_TEAM_ID="ZK7G72LVAX" APPLE_APP_SPECIFIC_PASSWORD="xxx" MACOS_NOTARIZATION_ARTIFACT_DIR="$fixture/artifacts" "$SCRIPT_DIR/notarize-dmg.sh" submit "$fixture/test.dmg" 2>&1)"
 status=$?
 set -e
 [ "$status" -ne 0 ] || { echo "Expected notarization failure path to fail." >&2; exit 1; }
 test -f "$fixture/artifacts/apple-notarization-log.json" || { echo "Expected notarization failure path to save Apple log." >&2; exit 1; }
 assert_contains "$output" "Apple notarization submission ID: test-submission-id"
+touch "$fixture/artifacts/accepted"
+STUB_XCRUN_LOG="$TMP_DIR/staple-xcrun.log" PATH="$STUB_DIR:$PATH" MACOS_NOTARIZATION_ARTIFACT_DIR="$fixture/artifacts" "$SCRIPT_DIR/notarize-dmg.sh" staple "$fixture/test.dmg" >/dev/null
+grep -Fxq "stapler staple" "$TMP_DIR/staple-xcrun.log" || { echo "Expected stapling to call xcrun stapler staple." >&2; exit 1; }
+grep -Fxq "stapler validate" "$TMP_DIR/staple-xcrun.log" || { echo "Expected stapling to call xcrun stapler validate." >&2; exit 1; }
+if grep -Fq "notarytool" "$TMP_DIR/staple-xcrun.log"; then
+  echo "Stapling must not call xcrun notarytool." >&2
+  exit 1
+fi
 
 MAKE_TMP="$TMP_DIR/make"
 mkdir -p "$MAKE_TMP/dist/app"
@@ -563,10 +578,18 @@ identity_line="$(grep -n 'Verify signing identity' "$workflow" | head -n 1 | cut
 sign_line="$(grep -n 'Sign embedded code' "$workflow" | head -n 1 | cut -d: -f1)"
 notarize_line="$(grep -n 'Notarize macOS DMG' "$workflow" | head -n 1 | cut -d: -f1)"
 mounted_line="$(grep -n 'Verify mounted DMG signatures' "$workflow" | head -n 1 | cut -d: -f1)"
+staple_line="$(grep -n 'Staple notarization ticket' "$workflow" | head -n 1 | cut -d: -f1)"
+verify_notarized_line="$(grep -n 'Verify notarized release artifact' "$workflow" | head -n 1 | cut -d: -f1)"
+checksum_line="$(grep -n 'Generate checksum' "$workflow" | head -n 1 | cut -d: -f1)"
 publish_line="$(grep -n 'Publish GitHub Release assets' "$workflow" | head -n 1 | cut -d: -f1)"
 [ "$import_line" -lt "$identity_line" ] || { echo "Release workflow validates identity before import." >&2; exit 1; }
 [ "$identity_line" -lt "$sign_line" ] || { echo "Release workflow signs before validating identity." >&2; exit 1; }
 [ "$mounted_line" -lt "$notarize_line" ] || { echo "Release workflow notarizes before mounted DMG verification." >&2; exit 1; }
+[ "$notarize_line" -lt "$staple_line" ] || { echo "Release workflow staples before notarization." >&2; exit 1; }
+[ "$staple_line" -lt "$verify_notarized_line" ] || { echo "Release workflow verifies notarization before stapling." >&2; exit 1; }
+[ "$verify_notarized_line" -lt "$checksum_line" ] || { echo "Release workflow generates checksum before final notarization verification." >&2; exit 1; }
+[ "$staple_line" -lt "$checksum_line" ] || { echo "Release workflow generates checksum before stapling." >&2; exit 1; }
+[ "$checksum_line" -lt "$publish_line" ] || { echo "Release workflow publishes before checksum generation." >&2; exit 1; }
 [ "$notarize_line" -lt "$publish_line" ] || { echo "Release workflow publishes before notarization." >&2; exit 1; }
 grep -Fq 'make verify-macos-signatures' "$workflow" || { echo "Expected workflow to verify app signatures before DMG creation." >&2; exit 1; }
 grep -Fq 'make verify-macos-dmg-signatures' "$workflow" || { echo "Expected workflow to verify mounted DMG signatures before notarization." >&2; exit 1; }
