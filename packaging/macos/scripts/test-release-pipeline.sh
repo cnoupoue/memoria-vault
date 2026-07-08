@@ -24,7 +24,7 @@ write_stub uname '#!/usr/bin/env bash' \
 write_stub file '#!/usr/bin/env bash' \
   'path="${*: -1}"' \
   'case "$path" in' \
-  '  *"/Contents/MacOS/Memoria Vault"|*"/Contents/app/ffmpeg/ffmpeg"|*".dylib") echo "$path: Mach-O 64-bit executable arm64" ;;' \
+  '  *"/Contents/MacOS/Memoria Vault"|*"/Contents/app/ffmpeg/ffmpeg"|*"/Contents/runtime/Contents/Home/bin/java"|*".dylib") echo "$path: Mach-O 64-bit executable arm64" ;;' \
   '  *) echo "$path: ASCII text" ;;' \
   'esac'
 write_stub otool '#!/usr/bin/env bash' \
@@ -34,6 +34,14 @@ write_stub otool '#!/usr/bin/env bash' \
   'if [ "${STUB_UNSAFE_DEPS:-0}" = "1" ]; then echo "	/opt/homebrew/Cellar/example/1.0/lib/libexample.dylib (compatibility version 1.0.0, current version 1.0.0)"; fi'
 write_stub codesign '#!/usr/bin/env bash' \
   'target="${*: -1}"' \
+  'has_unsigned_marker() {' \
+  '  probe="$target"' \
+  '  while [ "$probe" != "/" ] && [ -n "$probe" ]; do' \
+  '    if [ -f "$probe/.unsigned-replacement" ]; then return 0; fi' \
+  '    probe="$(dirname "$probe")"' \
+  '  done' \
+  '  return 1' \
+  '}' \
   'if printf "%s\n" "$*" | grep -q -- "--sign"; then' \
   '  if [ -n "${STUB_CODESIGN_ARGS_LOG:-}" ]; then printf "%s\n" "$*" >>"${STUB_CODESIGN_ARGS_LOG}"; fi' \
   '  if [ "${STUB_CODESIGN_MISSING_IDENTITY:-0}" = "1" ]; then echo "error: The specified item could not be found in the keychain." >&2; exit 1; fi' \
@@ -41,15 +49,15 @@ write_stub codesign '#!/usr/bin/env bash' \
   '  echo "$target" >>"${STUB_CODESIGN_SIGNED_LOG:?}"; exit 0' \
   'fi' \
   'if [ "${1:-}" = "-dv" ]; then' \
-  '  if [ "${STUB_ADHOC_SIGNATURE:-0}" = "1" ]; then echo "Signature=adhoc" >&2; fi' \
-  '  if [ "${STUB_MISSING_AUTHORITY:-0}" != "1" ]; then echo "${STUB_AUTHORITY:-Authority=Developer ID Application: Test (ZK7G72LVAX)}" >&2; fi' \
-  '  echo "TeamIdentifier=${STUB_TEAM_ID:-ZK7G72LVAX}" >&2' \
-  '  if [ "${STUB_MISSING_TIMESTAMP:-0}" != "1" ]; then echo "Timestamp=Jan 1, 2026 at 00:00:00" >&2; fi' \
+  '  if has_unsigned_marker || [ "${STUB_ADHOC_SIGNATURE:-0}" = "1" ]; then echo "Signature=adhoc" >&2; fi' \
+  '  if ! has_unsigned_marker && [ "${STUB_MISSING_AUTHORITY:-0}" != "1" ]; then echo "${STUB_AUTHORITY:-Authority=Developer ID Application: Test (ZK7G72LVAX)}" >&2; fi' \
+  '  if has_unsigned_marker; then echo "TeamIdentifier=BADTEAM" >&2; else echo "TeamIdentifier=${STUB_TEAM_ID:-ZK7G72LVAX}" >&2; fi' \
+  '  if ! has_unsigned_marker && [ "${STUB_MISSING_TIMESTAMP:-0}" != "1" ]; then echo "Timestamp=Jan 1, 2026 at 00:00:00" >&2; fi' \
   '  echo "Runtime Version=15.0.0" >&2' \
-  '  echo "CodeDirectory v=20500 size=1 flags=${STUB_FLAGS:-0x10000(runtime)} hashes=1+2 location=embedded" >&2' \
+  '  if has_unsigned_marker; then echo "CodeDirectory v=20500 size=1 flags=0x2(adhoc) hashes=1+2 location=embedded" >&2; echo "CDHash=unsigned" >&2; else echo "CodeDirectory v=20500 size=1 flags=${STUB_FLAGS:-0x10000(runtime)} hashes=1+2 location=embedded" >&2; echo "CDHash=signed" >&2; fi' \
   '  exit 0' \
   'fi' \
-  'if [ "${STUB_ALL_SIGNED:-0}" = "1" ] || { [ "${STUB_SQLITE_SIGNED:-0}" = "1" ] && printf "%s\n" "$target" | grep -Fq "/org/sqlite/native/Mac/" && printf "%s\n" "$target" | grep -Fq "/libsqlitejdbc.dylib"; } || printf "%s\n" "${STUB_SIGNED_PATHS:-}" | grep -Fxq "$target"; then exit 0; fi' \
+  'if ! has_unsigned_marker && { [ "${STUB_ALL_SIGNED:-0}" = "1" ] || { [ "${STUB_SQLITE_SIGNED:-0}" = "1" ] && printf "%s\n" "$target" | grep -Fq "/org/sqlite/native/Mac/" && printf "%s\n" "$target" | grep -Fq "/libsqlitejdbc.dylib"; } || printf "%s\n" "${STUB_SIGNED_PATHS:-}" | grep -Fxq "$target"; }; then exit 0; fi' \
   'if [ -n "${STUB_CODESIGN_SIGNED_LOG:-}" ] && [ -f "${STUB_CODESIGN_SIGNED_LOG}" ] && grep -Fxq "$target" "${STUB_CODESIGN_SIGNED_LOG}"; then exit 0; fi' \
   'echo "$target: code object is not signed at all" >&2' \
   'exit 1'
@@ -70,6 +78,41 @@ write_stub plutil '#!/usr/bin/env bash' \
   'if [ "$key" = "id" ]; then sed -n "s/.*\"id\":\"\\([^\"]*\\)\".*/\\1/p" "$file"; fi' \
   'if [ "$key" = "status" ]; then sed -n "s/.*\"status\":\"\\([^\"]*\\)\".*/\\1/p" "$file"; fi'
 write_stub spctl '#!/usr/bin/env bash' 'exit 0'
+write_stub ditto '#!/usr/bin/env bash' \
+  'while [ "$#" -gt 0 ] && printf "%s\n" "$1" | grep -q -- "^--"; do shift; done' \
+  'src="$1"; dest="$2"' \
+  'if [ -n "${STUB_DITTO_LOG:-}" ]; then printf "%s\n" "$src" >"${STUB_DITTO_LOG}"; fi' \
+  'mkdir -p "$(dirname "$dest")"' \
+  'cp -R "$src" "$dest"'
+write_stub hdiutil '#!/usr/bin/env bash' \
+  'action="${1:-}"; shift || true' \
+  'case "$action" in' \
+  '  create)' \
+  '    src=""; out=""' \
+  '    while [ "$#" -gt 0 ]; do case "$1" in -srcfolder) src="$2"; shift 2 ;; -volname|-format) shift 2 ;; -ov) shift ;; *) out="$1"; shift ;; esac; done' \
+  '    mkdir -p "$(dirname "$out")"' \
+  '    rm -f "$out"' \
+  '    rm -rf "$out.contents"' \
+  '    mkdir -p "$out.contents"' \
+  '    : >"$out"' \
+  '    if [ -n "$src" ]; then cp -R "$src"/. "$out.contents"/; fi' \
+  '    if [ -n "${STUB_DMG_CREATE_LOG:-}" ]; then printf "%s\n" "$src" >"${STUB_DMG_CREATE_LOG}"; fi' \
+  '    exit 0' \
+  '    ;;' \
+  '  attach)' \
+  '    mount=""' \
+  '    dmg=""' \
+  '    while [ "$#" -gt 0 ]; do case "$1" in -mountpoint) mount="$2"; shift 2 ;; -readonly|-nobrowse) shift ;; *) dmg="$1"; shift ;; esac; done' \
+  '    mkdir -p "$mount"' \
+  '    cp -R "$dmg.contents"/. "$mount"/' \
+  '    if [ "${STUB_DMG_REPLACE_UNSIGNED:-0}" = "1" ]; then find "$mount" -maxdepth 1 -type d -name "*.app" -exec sh -c '"'"'touch "$1/.unsigned-replacement"'"'"' _ {} \; ; fi' \
+  '    exit 0' \
+  '    ;;' \
+  '  detach)' \
+  '    exit 0' \
+  '    ;;' \
+  'esac' \
+  'exit 1'
 write_stub jpackage '#!/usr/bin/env bash' \
   'if printf "%s\n" "$*" | grep -q -- "--type dmg"; then' \
   '  dest=""; name=""; version=""' \
@@ -86,11 +129,13 @@ make_fixture() {
   jar_name="${2:-memoria-vault-test.jar}"
   mkdir -p "$fixture/Memoria Vault.app/Contents/MacOS"
   mkdir -p "$fixture/Memoria Vault.app/Contents/app/ffmpeg"
-  mkdir -p "$fixture/Memoria Vault.app/Contents/runtime/lib"
+  mkdir -p "$fixture/Memoria Vault.app/Contents/runtime/Contents/Home/bin"
+  mkdir -p "$fixture/Memoria Vault.app/Contents/runtime/Contents/Home/lib/server"
   printf 'launcher\n' >"$fixture/Memoria Vault.app/Contents/MacOS/Memoria Vault"
   printf 'ffmpeg\n' >"$fixture/Memoria Vault.app/Contents/app/ffmpeg/ffmpeg"
-  printf 'native\n' >"$fixture/Memoria Vault.app/Contents/runtime/lib/libjava.dylib"
-  chmod +x "$fixture/Memoria Vault.app/Contents/MacOS/Memoria Vault" "$fixture/Memoria Vault.app/Contents/app/ffmpeg/ffmpeg"
+  printf 'java\n' >"$fixture/Memoria Vault.app/Contents/runtime/Contents/Home/bin/java"
+  printf 'jvm\n' >"$fixture/Memoria Vault.app/Contents/runtime/Contents/Home/lib/server/libjvm.dylib"
+  chmod +x "$fixture/Memoria Vault.app/Contents/MacOS/Memoria Vault" "$fixture/Memoria Vault.app/Contents/app/ffmpeg/ffmpeg" "$fixture/Memoria Vault.app/Contents/runtime/Contents/Home/bin/java"
 
   sqlite_work="$fixture/sqlite-work"
   app_work="$fixture/app-work"
@@ -460,17 +505,36 @@ set -e
 assert_contains "$output" "SQLite native library Developer ID authority mismatch."
 
 set +e
-output="$(STUB_SQLITE_SIGNED=1 PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" make -f "$REPO_ROOT/Makefile" package-macos-dmg-from-signed-app DIST_DIR="$MAKE_TMP/dist" JAR_PATH="$MAKE_TMP/target/memoria-vault-1.2.3.jar" APP_VERSION=1.2.3 JPACKAGE_VERSION=1.2.3 2>&1)"
+output="$(STUB_SQLITE_SIGNED=1 STUB_DITTO_LOG="$TMP_DIR/unsigned-dmg-ditto.log" PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" make -f "$REPO_ROOT/Makefile" package-macos-dmg-from-signed-app DIST_DIR="$MAKE_TMP/dist" JAR_PATH="$MAKE_TMP/target/memoria-vault-1.2.3.jar" APP_VERSION=1.2.3 JPACKAGE_VERSION=1.2.3 2>&1)"
 status=$?
 set -e
 [ "$status" -ne 0 ] || { echo "Expected DMG packaging from unsigned app to fail." >&2; exit 1; }
-assert_contains "$output" "Refusing to create DMG because the app is not signed with valid release signatures"
+assert_contains "$output" "Signed macOS app is missing or invalid. Refusing to create a DMG."
+test ! -f "$TMP_DIR/unsigned-dmg-ditto.log" || { echo "Expected invalid source app to abort before DMG app copy." >&2; exit 1; }
 
 before="$(mtime "$MAKE_TMP/dist/app/Memoria Vault.app/Contents/MacOS/Memoria Vault")"
-STUB_ALL_SIGNED=1 PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" make -f "$REPO_ROOT/Makefile" package-macos-dmg-from-signed-app DIST_DIR="$MAKE_TMP/dist" JAR_PATH="$MAKE_TMP/target/memoria-vault-1.2.3.jar" APP_VERSION=1.2.3 JPACKAGE_VERSION=1.2.3 >/dev/null
+output="$(STUB_ALL_SIGNED=1 STUB_DITTO_LOG="$TMP_DIR/signed-dmg-ditto.log" PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" make -f "$REPO_ROOT/Makefile" package-macos-dmg-from-signed-app DIST_DIR="$MAKE_TMP/dist" JAR_PATH="$MAKE_TMP/target/memoria-vault-1.2.3.jar" APP_VERSION=1.2.3 JPACKAGE_VERSION=1.2.3)"
+assert_contains "$output" "Creating DMG from verified signed app bundle."
+assert_contains "$output" "Source app signature: Developer ID verified."
+assert_contains "$output" "Source app bundle: Memoria Vault.app"
 after="$(mtime "$MAKE_TMP/dist/app/Memoria Vault.app/Contents/MacOS/Memoria Vault")"
 [ "$before" = "$after" ] || { echo "DMG packaging modified the signed app." >&2; exit 1; }
 test -f "$MAKE_TMP/dist/installers/Memoria-Vault-1.2.3-macos-arm64.dmg" || { echo "Expected DMG to be created from signed app." >&2; exit 1; }
+assert_equals "$MAKE_TMP/dist/app/Memoria Vault.app" "$(cat "$TMP_DIR/signed-dmg-ditto.log")" "Expected DMG creator to copy the already-signed app bundle."
+
+mounted_output="$(STUB_ALL_SIGNED=1 PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" "$SCRIPT_DIR/verify-dmg-signatures.sh" "$MAKE_TMP/dist/installers/Memoria-Vault-1.2.3-macos-arm64.dmg" "$MAKE_TMP/dist/app/Memoria Vault.app")"
+assert_contains "$mounted_output" "Signed app identity continuity: verified"
+assert_contains "$mounted_output" "Launcher metadata: matches mounted DMG"
+assert_contains "$mounted_output" "FFmpeg metadata: matches mounted DMG"
+assert_contains "$mounted_output" "Java runtime metadata: matches mounted DMG"
+assert_contains "$mounted_output" "JVM library metadata: matches mounted DMG"
+
+set +e
+output="$(STUB_ALL_SIGNED=1 STUB_DMG_REPLACE_UNSIGNED=1 PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" APPLE_TEAM_ID="ZK7G72LVAX" "$SCRIPT_DIR/verify-dmg-signatures.sh" "$MAKE_TMP/dist/installers/Memoria-Vault-1.2.3-macos-arm64.dmg" "$MAKE_TMP/dist/app/Memoria Vault.app" 2>&1)"
+status=$?
+set -e
+[ "$status" -ne 0 ] || { echo "Expected mounted unsigned replacement app to fail DMG verification." >&2; exit 1; }
+assert_contains "$output" "metadata: does not match mounted DMG"
 
 : >"$MAKE_TMP/dist/installers/Memoria-Vault-1.2.3-macos-arm64.dmg"
 STUB_CODESIGN_SIGNED_LOG="$TMP_DIR/dmg-signed.log" STUB_CODESIGN_ARGS_LOG="$TMP_DIR/dmg-signed-args.log" PATH="$STUB_DIR:$PATH" APPLE_DEVELOPER_ID_APPLICATION="Developer ID Application: Test (ZK7G72LVAX)" KEYCHAIN_PATH="$TMP_DIR/signing.keychain-db" make -f "$REPO_ROOT/Makefile" sign-macos-dmg DIST_DIR="$MAKE_TMP/dist" APP_VERSION=1.2.3 JPACKAGE_VERSION=1.2.3 >/dev/null
@@ -479,6 +543,19 @@ grep -F -- "--keychain $TMP_DIR/signing.keychain-db $MAKE_TMP/dist/installers/Me
 help_output="$(make -f "$REPO_ROOT/Makefile" help)"
 assert_contains "$help_output" "Signed release path"
 assert_contains "$help_output" "package-macos-dmg-from-signed-app"
+
+release_dmg_target="$(awk '
+  /^package-macos-dmg-from-signed-app:/ { in_target = 1 }
+  in_target && /^[[:alnum:]_-]+:/ && $0 !~ /^package-macos-dmg-from-signed-app:/ { exit }
+  in_target { print }
+' "$REPO_ROOT/Makefile")"
+case "$release_dmg_target" in
+  *"package-macos-app"* | *"jpackage"* | *"clean-macos-app-output"* | *"clean-packaging"*)
+    echo "Signed DMG target must not rebuild, clean, or invoke jpackage." >&2
+    exit 1
+    ;;
+esac
+assert_contains "$release_dmg_target" "create-dmg.sh"
 
 workflow="$REPO_ROOT/.github/workflows/release-macos-arm64.yml"
 import_line="$(grep -n 'Import Developer ID certificate' "$workflow" | head -n 1 | cut -d: -f1)"
