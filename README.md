@@ -56,6 +56,13 @@ On macOS, you can install FFmpeg with:
 ```bash
 brew install ffmpeg
 ```
+On Windows, you can install FFmpeg via Scoop or Chocolatey:
+
+```powershell
+scoop install ffmpeg
+# or using Chocolatey
+choco install ffmpeg
+```
 
 Verify the installation:
 
@@ -77,6 +84,18 @@ make install
 
 ```bash
 make dev
+```
+On Windows (using PowerShell):
+
+Run the backend and frontend in separate terminals:
+
+```powershell
+# Terminal 1: Backend
+.\mvnw.cmd spring-boot:run
+
+# Terminal 2: Frontend
+cd frontend
+npm run dev
 ```
 
 This starts:
@@ -194,9 +213,18 @@ make clean
 
 Run all local quality checks before opening a pull request:
 
+On MacOS:
 ```bash
 make verify
 ```
+
+On Windows:
+
+```PowerShell
+powershell -NoProfile -ExecutionPolicy Bypass -File packaging/windows/scripts/package-windows.ps1
+```
+
+Production mode embeds the compiled React frontend in the Spring Boot JAR, serves the app from http://127.0.0.1:8080, and does not require Vite or Node.js at runtime. This JAR is the foundation for future macOS and Windows native packaging with jpackage.
 
 This validates:
 
@@ -225,6 +253,36 @@ make run-production
 Production mode embeds the compiled React frontend in the Spring Boot JAR, serves the app from `http://127.0.0.1:8080`, and does not require Vite or Node.js at runtime. `make run-production` starts Memoria Vault locally and opens the default browser automatically. If Memoria Vault is already running, the existing local app is opened instead.
 
 This JAR is the foundation for future macOS packaging with `jpackage`.
+
+Windows packaging
+Maintainers can build the standalone Windows executable bundle using the automated PowerShell script. This script automatically handles downloading the official stable FFmpeg binary for Windows, builds the production Maven artifact, and stages all resources.
+
+Run the packaging script from the repository root:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File packaging/windows/scripts/package-windows.ps1
+```
+
+This prepares the distribution folder:
+
+```Plaintext
+dist/jpackage-input/
+├── memoria-vault-<version>.jar
+└── ffmpeg/ffmpeg.exe
+```
+Unlike the macOS release pipeline, Windows code-signing is disabled by default for this project. Once the input staging completes, you can build an unsigned standalone executable installer (.exe) by executing the jpackage command generated at the end of the script:
+
+```powershell
+jpackage --type exe --dest "dist\installers" --name "Memoria Vault" --app-version <version> --vendor "cnoupoue" --input "dist\jpackage-input" --main-jar "memoria-vault-<version>.jar" --icon "packaging\windows\icon\MemoriaVault.ico" --win-shortcut --win-menu --jlink-options "--strip-debug --no-man-pages --no-header-files --compress zip-6"
+```
+
+The resulting installer will be available under dist/installers/.
+
+If you need to extract and inspect or repack embedded native libraries (such as the SQLite native DLLs packaged inside the sqlite-jdbc JAR) without signing them, use the helper script:
+
+```PowerShell
+powershell -NoProfile -ExecutionPolicy Bypass -File packaging/windows/scripts/sign-sqlite-native-libs.ps1 -AppPath "dist\jpackage-input\memoria-vault-<version>.jar"
+```
 
 ## macOS packaging
 
