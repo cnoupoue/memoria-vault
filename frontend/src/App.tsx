@@ -64,6 +64,7 @@ function App() {
   const [selectedMemory, setSelectedMemory] = useState<MemoryDetail | null>(
     null,
   );
+  const [viewerMemoryIds, setViewerMemoryIds] = useState<string[]>([]);
   const [isLoadingSelectedMemory, setIsLoadingSelectedMemory] = useState(false);
   const [selectedMemoryError, setSelectedMemoryError] = useState<string | null>(
     null,
@@ -280,7 +281,17 @@ function App() {
   async function toggleFavorite(memoryId: string, nextFavorite: boolean) {
     const previousMemories = memories;
     const previousSelectedMemory = selectedMemory;
+    const previousViewerMemoryIds = viewerMemoryIds;
     const favoritedAt = nextFavorite ? new Date().toISOString() : null;
+    const currentViewerIndex = viewerMemoryIds.indexOf(memoryId);
+    const updatedViewerMemoryIds = viewerMemoryIds.filter(
+      (id) => id !== memoryId,
+    );
+    const fallbackViewerMemoryId =
+      currentViewerIndex === -1
+        ? undefined
+        : (viewerMemoryIds[currentViewerIndex + 1] ??
+          viewerMemoryIds[currentViewerIndex - 1]);
 
     setError(null);
     setMemories((currentMemories) =>
@@ -338,10 +349,20 @@ function App() {
 
       if (activeView === 'favorites' && !updatedMemory.isFavorite) {
         setTotalMemories((currentTotal) => Math.max(0, currentTotal - 1));
+        setViewerMemoryIds(updatedViewerMemoryIds);
+
+        if (selectedMemory?.id === memoryId) {
+          if (fallbackViewerMemoryId) {
+            void openMemory(fallbackViewerMemoryId, updatedViewerMemoryIds);
+          } else {
+            closeMemoryViewer();
+          }
+        }
       }
     } catch {
       setMemories(previousMemories);
       setSelectedMemory(previousSelectedMemory);
+      setViewerMemoryIds(previousViewerMemoryIds);
       setError('Could not update Favorites. Try again.');
     }
   }
@@ -351,10 +372,14 @@ function App() {
     setSelectedMonth(month);
   }
 
-  async function openMemory(memoryId: string) {
+  async function openMemory(
+    memoryId: string,
+    contextMemoryIds = memories.map((memory) => memory.id),
+  ) {
     setSelectedMemory(null);
     setSelectedMemoryError(null);
     setIsLoadingSelectedMemory(true);
+    setViewerMemoryIds(contextMemoryIds);
 
     try {
       const detail = await getMemoryDetail(memoryId);
@@ -370,8 +395,24 @@ function App() {
 
   function closeMemoryViewer() {
     setSelectedMemory(null);
+    setViewerMemoryIds([]);
     setSelectedMemoryError(null);
     setIsLoadingSelectedMemory(false);
+  }
+
+  function openAdjacentMemory(offset: -1 | 1) {
+    if (!selectedMemory) {
+      return;
+    }
+
+    const currentIndex = viewerMemoryIds.indexOf(selectedMemory.id);
+    const adjacentMemoryId = viewerMemoryIds[currentIndex + offset];
+
+    if (!adjacentMemoryId) {
+      return;
+    }
+
+    void openMemory(adjacentMemoryId, viewerMemoryIds);
   }
 
   function refreshArchiveData() {
@@ -411,6 +452,14 @@ function App() {
       : selectedMonth === undefined
         ? String(selectedYear)
         : `${MONTH_NAMES[selectedMonth - 1]} ${selectedYear}`;
+  const currentMemoryIds = memories.map((memory) => memory.id);
+  const selectedMemoryIndex = selectedMemory
+    ? viewerMemoryIds.indexOf(selectedMemory.id)
+    : -1;
+  const hasPreviousMemory = selectedMemoryIndex > 0;
+  const hasNextMemory =
+    selectedMemoryIndex >= 0 &&
+    selectedMemoryIndex < viewerMemoryIds.length - 1;
 
   return (
     <main className="app-shell">
@@ -650,7 +699,9 @@ function App() {
                       <MemoryCard
                         key={memory.id}
                         memory={memory}
-                        onOpen={(memoryId) => void openMemory(memoryId)}
+                        onOpen={(memoryId) =>
+                          void openMemory(memoryId, currentMemoryIds)
+                        }
                         onToggleFavorite={(memoryId, nextFavorite) =>
                           void toggleFavorite(memoryId, nextFavorite)
                         }
@@ -685,7 +736,9 @@ function App() {
           )
         ) : activeView === 'flashbacks' ? (
           <FlashbacksPage
-            onOpenMemory={(memoryId) => void openMemory(memoryId)}
+            onOpenMemory={(memoryId, contextMemoryIds) =>
+              void openMemory(memoryId, contextMemoryIds)
+            }
           />
         ) : (
           <SettingsPage
@@ -723,9 +776,13 @@ function App() {
 
       <MemoryViewer
         error={selectedMemoryError}
+        hasNext={hasNextMemory}
+        hasPrevious={hasPreviousMemory}
         isLoading={isLoadingSelectedMemory}
         memory={selectedMemory}
         onClose={closeMemoryViewer}
+        onNext={() => openAdjacentMemory(1)}
+        onPrevious={() => openAdjacentMemory(-1)}
         onToggleFavorite={(memoryId, nextFavorite) =>
           void toggleFavorite(memoryId, nextFavorite)
         }

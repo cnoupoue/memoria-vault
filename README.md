@@ -415,14 +415,11 @@ You can also support the project by:
 
 Planned improvements include:
 
-* Favorites and collections
-* Advanced filters for photos, videos, overlays, and dates
-* Previous and next navigation in the viewer
-* Better source availability detection
-* Thumbnail cache invalidation
-* Backup and restore for the local index
-* Desktop packaging for macOS and Windows
-* Optional local network deployment with authentication
+- [x] Favorites and collections
+- [ ] Windows version
+- [ ] Advanced filters for photos, videos, overlays, and dates 
+- [x] Previous and next navigation in the viewer
+- [ ] Optional local network deployment with authentication
 
 ## License
 

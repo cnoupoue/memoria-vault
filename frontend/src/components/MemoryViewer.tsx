@@ -16,7 +16,11 @@ type MemoryViewerProps = {
   memory: MemoryDetail | null;
   isLoading: boolean;
   error: string | null;
+  hasPrevious?: boolean;
+  hasNext?: boolean;
   onClose: () => void;
+  onPrevious?: () => void;
+  onNext?: () => void;
   onToggleFavorite?: (memoryId: string, nextFavorite: boolean) => void;
 };
 
@@ -24,7 +28,11 @@ export function MemoryViewer({
   memory,
   isLoading,
   error,
+  hasPrevious = false,
+  hasNext = false,
   onClose,
+  onPrevious,
+  onNext,
   onToggleFavorite,
 }: MemoryViewerProps) {
   const [mediaErrorMemoryId, setMediaErrorMemoryId] = useState<string | null>(
@@ -44,6 +52,7 @@ export function MemoryViewer({
     openOriginalStatus: null,
   });
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const hasMediaError = memory !== null && mediaErrorMemoryId === memory.id;
   const mediaErrorMessage = getPlaybackMessage(mediaErrorCategory);
@@ -62,6 +71,18 @@ export function MemoryViewer({
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         onClose();
+        return;
+      }
+
+      if (event.key === 'ArrowLeft' && hasPrevious) {
+        event.preventDefault();
+        onPrevious?.();
+        return;
+      }
+
+      if (event.key === 'ArrowRight' && hasNext) {
+        event.preventDefault();
+        onNext?.();
       }
     }
 
@@ -70,7 +91,7 @@ export function MemoryViewer({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [onClose]);
+  }, [hasNext, hasPrevious, onClose, onNext, onPrevious]);
 
   const isOpen = isLoading || error !== null || memory !== null;
 
@@ -79,6 +100,28 @@ export function MemoryViewer({
       closeButtonRef.current?.focus();
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+
+    return () => {
+      if (!video) {
+        return;
+      }
+
+      const hadLoadedSource = video.currentSrc !== '';
+
+      if (!video.paused) {
+        video.pause();
+      }
+
+      video.removeAttribute('src');
+
+      if (hadLoadedSource) {
+        video.load();
+      }
+    };
+  }, [memory?.id]);
 
   if (!isOpen) {
     return null;
@@ -222,6 +265,28 @@ export function MemoryViewer({
 
         {!isLoading && !error && memory && (
           <>
+            <button
+              aria-label="Previous memory"
+              className="memory-viewer-nav memory-viewer-nav-previous"
+              disabled={!hasPrevious}
+              onClick={onPrevious}
+              type="button"
+            >
+              <span aria-hidden="true">‹</span>
+              <span>Previous</span>
+            </button>
+
+            <button
+              aria-label="Next memory"
+              className="memory-viewer-nav memory-viewer-nav-next"
+              disabled={!hasNext}
+              onClick={onNext}
+              type="button"
+            >
+              <span>Next</span>
+              <span aria-hidden="true">›</span>
+            </button>
+
             <div className="memory-viewer-media">
               {isPreparingPlayback && (
                 <div className="memory-viewer-state">
@@ -257,6 +322,8 @@ export function MemoryViewer({
                 />
               ) : (
                 <video
+                  key={memory.id}
+                  ref={videoRef}
                   autoPlay
                   className="memory-viewer-video"
                   controls

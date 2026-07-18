@@ -27,6 +27,176 @@ afterEach(() => {
 });
 
 describe('MemoryViewer', () => {
+  it('renders previous and next controls with disabled boundary state', () => {
+    render(
+      <MemoryViewer
+        error={null}
+        hasNext
+        hasPrevious={false}
+        isLoading={false}
+        memory={{
+          id: 'memory-1',
+          capturedAt: '2020-06-10',
+          mediaType: 'IMAGE',
+          hasOverlay: false,
+          fileSizeBytes: 1_500_000,
+          lastModifiedAt: '2020-06-10T10:00:00Z',
+          mediaUrl: '/api/memories/memory-1/media',
+          overlayUrl: null,
+          isFavorite: false,
+          favoritedAt: null,
+        }}
+        onClose={vi.fn()}
+        onNext={vi.fn()}
+        onPrevious={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', { name: 'Previous memory' }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: 'Next memory' }),
+    ).not.toBeDisabled();
+  });
+
+  it('uses click and keyboard navigation callbacks while open', async () => {
+    const user = userEvent.setup();
+    const onPrevious = vi.fn();
+    const onNext = vi.fn();
+    const onClose = vi.fn();
+
+    render(
+      <MemoryViewer
+        error={null}
+        hasNext
+        hasPrevious
+        isLoading={false}
+        memory={{
+          id: 'memory-1',
+          capturedAt: '2020-06-10',
+          mediaType: 'IMAGE',
+          hasOverlay: false,
+          fileSizeBytes: 1_500_000,
+          lastModifiedAt: '2020-06-10T10:00:00Z',
+          mediaUrl: '/api/memories/memory-1/media',
+          overlayUrl: null,
+          isFavorite: false,
+          favoritedAt: null,
+        }}
+        onClose={onClose}
+        onNext={onNext}
+        onPrevious={onPrevious}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Next memory' }));
+    await user.click(screen.getByRole('button', { name: 'Previous memory' }));
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    expect(onNext).toHaveBeenCalledTimes(2);
+    expect(onPrevious).toHaveBeenCalledTimes(2);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not use arrow callbacks when the relevant direction is disabled', () => {
+    const onPrevious = vi.fn();
+    const onNext = vi.fn();
+
+    render(
+      <MemoryViewer
+        error={null}
+        hasNext={false}
+        hasPrevious={false}
+        isLoading={false}
+        memory={{
+          id: 'memory-1',
+          capturedAt: '2020-06-10',
+          mediaType: 'IMAGE',
+          hasOverlay: false,
+          fileSizeBytes: 1_500_000,
+          lastModifiedAt: '2020-06-10T10:00:00Z',
+          mediaUrl: '/api/memories/memory-1/media',
+          overlayUrl: null,
+          isFavorite: false,
+          favoritedAt: null,
+        }}
+        onClose={vi.fn()}
+        onNext={onNext}
+        onPrevious={onPrevious}
+      />,
+    );
+
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+
+    expect(onNext).not.toHaveBeenCalled();
+    expect(onPrevious).not.toHaveBeenCalled();
+  });
+
+  it('stops the previous video when navigating away from it', () => {
+    const pauseSpy = vi
+      .spyOn(HTMLMediaElement.prototype, 'pause')
+      .mockImplementation(() => {});
+    const loadSpy = vi
+      .spyOn(HTMLMediaElement.prototype, 'load')
+      .mockImplementation(() => {});
+    const { rerender } = render(
+      <MemoryViewer
+        error={null}
+        isLoading={false}
+        memory={{
+          id: 'memory-video',
+          capturedAt: '2020-06-10',
+          mediaType: 'VIDEO',
+          hasOverlay: false,
+          fileSizeBytes: 1_500_000,
+          lastModifiedAt: '2020-06-10T10:00:00Z',
+          mediaUrl: '/api/memories/memory-video/media',
+          overlayUrl: null,
+          isFavorite: false,
+          favoritedAt: null,
+        }}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const video = document.querySelector('video') as HTMLVideoElement;
+    Object.defineProperty(video, 'paused', {
+      configurable: true,
+      value: false,
+    });
+    Object.defineProperty(video, 'currentSrc', {
+      configurable: true,
+      value: 'http://127.0.0.1:8080/api/memories/memory-video/media',
+    });
+
+    rerender(
+      <MemoryViewer
+        error={null}
+        isLoading={false}
+        memory={{
+          id: 'memory-image',
+          capturedAt: '2020-06-11',
+          mediaType: 'IMAGE',
+          hasOverlay: false,
+          fileSizeBytes: 1_500_000,
+          lastModifiedAt: '2020-06-11T10:00:00Z',
+          mediaUrl: '/api/memories/memory-image/media',
+          overlayUrl: null,
+          isFavorite: false,
+          favoritedAt: null,
+        }}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(pauseSpy).toHaveBeenCalled();
+    expect(loadSpy).toHaveBeenCalled();
+  });
+
   it('toggles favorite state from the detail view', async () => {
     const onToggleFavorite = vi.fn();
 

@@ -750,6 +750,51 @@ a:focus-visible {
   font-size: 1.2rem;
 }
 
+.memory-viewer-nav {
+  position: absolute;
+  z-index: 3;
+  top: 50%;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 42px;
+  padding: 8px 11px;
+  color: white;
+  cursor: pointer;
+  background: rgb(22 22 24 / 62%);
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 999px;
+  backdrop-filter: blur(14px);
+  font-size: 0.82rem;
+  font-weight: 750;
+  transform: translateY(-50%);
+  transition:
+    background 160ms ease,
+    opacity 160ms ease;
+}
+
+.memory-viewer-nav span[aria-hidden='true'] {
+  font-size: 1.55rem;
+  line-height: 1;
+}
+
+.memory-viewer-nav:hover:not(:disabled) {
+  background: rgb(22 22 24 / 84%);
+}
+
+.memory-viewer-nav:disabled {
+  cursor: not-allowed;
+  opacity: 0.34;
+}
+
+.memory-viewer-nav-previous {
+  left: 14px;
+}
+
+.memory-viewer-nav-next {
+  right: 14px;
+}
+
 .memory-viewer-close:hover {
   background: rgb(22 22 24 / 84%);
 }
@@ -1181,5 +1226,21 @@ a:focus-visible {
   .memory-viewer-image,
   .memory-viewer-video {
     max-height: calc(100vh - 105px);
+  }
+
+  .memory-viewer-nav {
+    top: auto;
+    bottom: 68px;
+    min-height: 38px;
+    padding: 7px 10px;
+    transform: none;
+  }
+
+  .memory-viewer-nav-previous {
+    left: 12px;
+  }
+
+  .memory-viewer-nav-next {
+    right: 12px;
   }
 }
