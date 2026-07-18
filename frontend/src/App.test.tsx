@@ -30,6 +30,8 @@ vi.mock('./api/memoriaVaultApi', () => ({
   getMemoryScanJob: vi.fn(),
   getMemorySourceAvailability: vi.fn(),
   getMemorySources: vi.fn(),
+  previewMemorySourceFavoritesRestore: vi.fn(),
+  restoreMemorySourceFavoritesBackup: vi.fn(),
   selectMemorySourceFolder: vi.fn(),
   getTimelineMonths: vi.fn(),
   getTimelineYears: vi.fn(),

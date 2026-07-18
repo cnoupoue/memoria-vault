@@ -14,6 +14,8 @@ vi.mock('../api/memoriaVaultApi', () => ({
   getMemoryScanJob: vi.fn(),
   getMemorySourceAvailability: vi.fn(),
   getMemorySources: vi.fn(),
+  previewMemorySourceFavoritesRestore: vi.fn(),
+  restoreMemorySourceFavoritesBackup: vi.fn(),
   selectMemorySourceFolder: vi.fn(),
   startMemorySourceScan: vi.fn(),
   MemoriaVaultApiError: class MemoriaVaultApiError extends Error {
@@ -42,6 +44,8 @@ import {
   getDiagnostics,
   getMemorySourceAvailability,
   getMemorySources,
+  previewMemorySourceFavoritesRestore,
+  restoreMemorySourceFavoritesBackup,
   selectMemorySourceFolder,
   MemoriaVaultApiError,
   startMemorySourceScan,
@@ -55,6 +59,12 @@ const exportMemorySourceFavoritesBackupMock = vi.mocked(
 const getDiagnosticsMock = vi.mocked(getDiagnostics);
 const getMemorySourcesMock = vi.mocked(getMemorySources);
 const getMemorySourceAvailabilityMock = vi.mocked(getMemorySourceAvailability);
+const previewMemorySourceFavoritesRestoreMock = vi.mocked(
+  previewMemorySourceFavoritesRestore,
+);
+const restoreMemorySourceFavoritesBackupMock = vi.mocked(
+  restoreMemorySourceFavoritesBackup,
+);
 const selectMemorySourceFolderMock = vi.mocked(selectMemorySourceFolder);
 const startMemorySourceScanMock = vi.mocked(startMemorySourceScan);
 
@@ -697,6 +707,161 @@ Local database: Ready`);
     expect(
       screen.getByText('Favorites backup downloaded.'),
     ).toBeInTheDocument();
+  });
+
+  it('previews and restores a selected favorites backup', async () => {
+    const user = userEvent.setup();
+    const source = buildSource({ favoriteCount: 1 });
+    const backup = {
+      version: 1,
+      exportedAt: '2026-07-18T20:30:00Z',
+      sourceId: source.id,
+      favorites: [
+        {
+          memoryId: 'memory-1',
+          externalMemoryId: 'external-1',
+          capturedAt: '2024-01-01',
+          mediaType: 'IMAGE',
+          mainPath: '/local/export/memory.jpg',
+          favoritedAt: '2026-07-18T10:00:00Z',
+        },
+      ],
+    };
+
+    getMemorySourcesMock.mockResolvedValue([source]);
+    previewMemorySourceFavoritesRestoreMock.mockResolvedValue({
+      totalFavorites: 3,
+      restorable: 2,
+      restored: 0,
+      alreadyFavorite: 1,
+      notFound: 1,
+    });
+    restoreMemorySourceFavoritesBackupMock.mockResolvedValue({
+      totalFavorites: 3,
+      restorable: 2,
+      restored: 1,
+      alreadyFavorite: 1,
+      notFound: 1,
+    });
+
+    const { container } = render(<SettingsPage onSourceScanned={vi.fn()} />);
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Import Favorites Backup' }),
+    );
+    await user.upload(
+      container.querySelector('input[type="file"]') as HTMLInputElement,
+      new File([JSON.stringify(backup)], 'favorites.json', {
+        type: 'application/json',
+      }),
+    );
+
+    expect(previewMemorySourceFavoritesRestoreMock).toHaveBeenCalledWith(
+      source.id,
+      backup,
+    );
+    expect(await screen.findByRole('dialog')).toHaveTextContent(
+      'Backup contains 3 favorites',
+    );
+    expect(screen.getByText('Can be restored')).toBeInTheDocument();
+    expect(screen.getByText('Already favorite')).toBeInTheDocument();
+    expect(screen.getByText('Not found')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Restore Favorites' }));
+
+    expect(restoreMemorySourceFavoritesBackupMock).toHaveBeenCalledWith(
+      source.id,
+      backup,
+    );
+    expect(
+      await screen.findByText('Favorites restore summary'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        '1 restored · 1 already favorite · 1 could not be matched',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('rejects invalid favorites backup JSON before previewing', async () => {
+    const user = userEvent.setup();
+
+    getMemorySourcesMock.mockResolvedValue([buildSource({})]);
+
+    const { container } = render(<SettingsPage onSourceScanned={vi.fn()} />);
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Import Favorites Backup' }),
+    );
+    await user.upload(
+      container.querySelector('input[type="file"]') as HTMLInputElement,
+      new File(['{invalid json'], 'favorites.json', {
+        type: 'application/json',
+      }),
+    );
+
+    expect(
+      await screen.findByText(/Expected property name|Unexpected token/),
+    ).toBeInTheDocument();
+    expect(previewMemorySourceFavoritesRestoreMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsupported favorites backup versions before previewing', async () => {
+    const user = userEvent.setup();
+
+    getMemorySourcesMock.mockResolvedValue([buildSource({})]);
+
+    const { container } = render(<SettingsPage onSourceScanned={vi.fn()} />);
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Import Favorites Backup' }),
+    );
+    await user.upload(
+      container.querySelector('input[type="file"]') as HTMLInputElement,
+      new File(
+        [JSON.stringify({ version: 2, favorites: [] })],
+        'favorites.json',
+        {
+          type: 'application/json',
+        },
+      ),
+    );
+
+    expect(
+      await screen.findByText(
+        'Only version 1 favorites backups can be imported.',
+      ),
+    ).toBeInTheDocument();
+    expect(previewMemorySourceFavoritesRestoreMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects favorites backups with missing required fields before previewing', async () => {
+    const user = userEvent.setup();
+
+    getMemorySourcesMock.mockResolvedValue([buildSource({})]);
+
+    const { container } = render(<SettingsPage onSourceScanned={vi.fn()} />);
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Import Favorites Backup' }),
+    );
+    await user.upload(
+      container.querySelector('input[type="file"]') as HTMLInputElement,
+      new File(
+        [JSON.stringify({ version: 1, favorites: [{ externalMemoryId: '' }] })],
+        'favorites.json',
+        {
+          type: 'application/json',
+        },
+      ),
+    );
+
+    expect(
+      await screen.findByText(
+        'The favorites backup has missing required fields.',
+      ),
+    ).toBeInTheDocument();
+    expect(previewMemorySourceFavoritesRestoreMock).not.toHaveBeenCalled();
   });
 
   it('removes a deleted source from the UI and notifies the parent', async () => {

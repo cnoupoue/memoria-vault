@@ -81,8 +81,20 @@ export type FavoriteBackupMemory = {
 export type FavoritesBackup = {
   version: number;
   exportedAt: string;
+  source?: {
+    id: string;
+    name: string;
+  };
   sourceId: string;
   favorites: FavoriteBackupMemory[];
+};
+
+export type FavoritesRestoreSummary = {
+  totalFavorites: number;
+  restorable: number;
+  restored: number;
+  alreadyFavorite: number;
+  notFound: number;
 };
 
 export type SourceAvailabilityStatus =

@@ -13,6 +13,10 @@ public interface SnapMemoryRepository extends JpaRepository<SnapMemory, String> 
 
   List<SnapMemory> findBySourceId(String sourceId);
 
+  List<SnapMemory> findBySourceIdAndExternalMemoryId(String sourceId, String externalMemoryId);
+
+  List<SnapMemory> findBySourceIdAndMainPath(String sourceId, String mainPath);
+
   List<SnapMemory> findBySourceIdAndIsFavoriteTrue(String sourceId);
 
   long countBySourceIdAndIsFavoriteTrue(String sourceId);

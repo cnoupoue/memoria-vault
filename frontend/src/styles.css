@@ -1135,6 +1135,29 @@ a:focus-visible {
   line-height: 1.5;
 }
 
+.restore-preview-list {
+  display: grid;
+  gap: 8px;
+  margin: 2px 0;
+}
+
+.restore-preview-list div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.restore-preview-list dt {
+  color: var(--muted);
+}
+
+.restore-preview-list dd {
+  margin: 0;
+  font-weight: 700;
+}
+
 .confirmation-actions {
   display: flex;
   gap: 10px;

@@ -2,6 +2,7 @@ import type {
   CreateMemorySourceRequest,
   Diagnostics,
   FavoritesBackup,
+  FavoritesRestoreSummary,
   FlashbackResponse,
   FolderSelection,
   Memory,
@@ -172,6 +173,38 @@ export function exportMemorySourceFavoritesBackup(
   sourceId: string,
 ): Promise<FavoritesBackup> {
   return request<FavoritesBackup>(`/api/sources/${sourceId}/favorites-backup`);
+}
+
+export function previewMemorySourceFavoritesRestore(
+  sourceId: string,
+  backup: FavoritesBackup,
+): Promise<FavoritesRestoreSummary> {
+  return request<FavoritesRestoreSummary>(
+    `/api/sources/${sourceId}/favorites-backup/preview`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(backup),
+    },
+  );
+}
+
+export function restoreMemorySourceFavoritesBackup(
+  sourceId: string,
+  backup: FavoritesBackup,
+): Promise<FavoritesRestoreSummary> {
+  return request<FavoritesRestoreSummary>(
+    `/api/sources/${sourceId}/favorites-backup/restore`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(backup),
+    },
+  );
 }
 
 export function createMemorySource(
