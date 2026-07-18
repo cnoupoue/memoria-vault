@@ -15,7 +15,9 @@ renaming files, moving media around, or sending a private archive to a cloud ser
 - Browse exported memories by year and month
 - Rediscover memories through flashbacks
 - Mark memories as favorites and find them later
-- Move through memories with previous/next navigation in the viewer
+- Back up and restore favorites locally
+- Move through memories with previous/next buttons and arrow keys in the viewer
+- Play and pause video memories with the Space bar
 - Preview images and videos locally
 - Display supported overlays without modifying original files
 - Keep original files untouched in their existing folder
