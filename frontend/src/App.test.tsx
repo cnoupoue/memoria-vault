@@ -11,8 +11,10 @@ import type { MemorySource } from './api/types';
 import App from './App';
 
 vi.mock('./api/memoriaVaultApi', () => ({
+  addMemoryFavorite: vi.fn(),
   createMemorySource: vi.fn(),
   deleteMemorySource: vi.fn(),
+  getFavoriteMemories: vi.fn(),
   getFlashbacksByDate: vi.fn(),
   getDiagnostics: vi.fn(),
   getLatestMemorySourceScan: vi.fn().mockRejectedValue(new Error('No scan')),
@@ -25,12 +27,15 @@ vi.mock('./api/memoriaVaultApi', () => ({
   getTimelineMonths: vi.fn(),
   getTimelineYears: vi.fn(),
   getTodayFlashbacks: vi.fn(),
+  removeMemoryFavorite: vi.fn(),
   startMemorySourceScan: vi.fn(),
   MemoriaVaultApiError: class MemoriaVaultApiError extends Error {},
 }));
 
 import {
+  addMemoryFavorite,
   createMemorySource,
+  getFavoriteMemories,
   getDiagnostics,
   getMemories,
   getMemoryDetail,
@@ -39,9 +44,12 @@ import {
   selectMemorySourceFolder,
   startMemorySourceScan,
   getTimelineYears,
+  removeMemoryFavorite,
 } from './api/memoriaVaultApi';
 
+const addMemoryFavoriteMock = vi.mocked(addMemoryFavorite);
 const createMemorySourceMock = vi.mocked(createMemorySource);
+const getFavoriteMemoriesMock = vi.mocked(getFavoriteMemories);
 const getDiagnosticsMock = vi.mocked(getDiagnostics);
 const getMemoriesMock = vi.mocked(getMemories);
 const getMemoryDetailMock = vi.mocked(getMemoryDetail);
@@ -50,6 +58,7 @@ const getTimelineMonthsMock = vi.mocked(getTimelineMonths);
 const selectMemorySourceFolderMock = vi.mocked(selectMemorySourceFolder);
 const startMemorySourceScanMock = vi.mocked(startMemorySourceScan);
 const getTimelineYearsMock = vi.mocked(getTimelineYears);
+const removeMemoryFavoriteMock = vi.mocked(removeMemoryFavorite);
 
 beforeEach(() => {
   getDiagnosticsMock.mockResolvedValue({
@@ -76,6 +85,13 @@ beforeEach(() => {
     totalElements: 0,
     totalPages: 0,
   });
+  getFavoriteMemoriesMock.mockResolvedValue({
+    content: [],
+    page: 0,
+    size: 48,
+    totalElements: 0,
+    totalPages: 0,
+  });
   getMemoryDetailMock.mockResolvedValue({
     id: 'memory-video',
     capturedAt: '2026-01-01',
@@ -85,6 +101,30 @@ beforeEach(() => {
     lastModifiedAt: '2026-01-01T00:00:00Z',
     mediaUrl: '/api/memories/memory-video/media',
     overlayUrl: null,
+    isFavorite: false,
+    favoritedAt: null,
+  });
+  addMemoryFavoriteMock.mockResolvedValue({
+    id: 'memory-video',
+    capturedAt: '2026-01-01',
+    mediaType: 'VIDEO',
+    hasOverlay: false,
+    fileSizeBytes: 1024,
+    lastModifiedAt: '2026-01-01T00:00:00Z',
+    thumbnailUrl: '/api/memories/memory-video/thumbnail',
+    isFavorite: true,
+    favoritedAt: '2026-07-18T10:15:30Z',
+  });
+  removeMemoryFavoriteMock.mockResolvedValue({
+    id: 'memory-video',
+    capturedAt: '2026-01-01',
+    mediaType: 'VIDEO',
+    hasOverlay: false,
+    fileSizeBytes: 1024,
+    lastModifiedAt: '2026-01-01T00:00:00Z',
+    thumbnailUrl: '/api/memories/memory-video/thumbnail',
+    isFavorite: false,
+    favoritedAt: null,
   });
   getTimelineMonthsMock.mockResolvedValue([]);
   getTimelineYearsMock.mockResolvedValue([]);
@@ -332,6 +372,8 @@ describe('App video preview fallback', () => {
           fileSizeBytes: 1024,
           lastModifiedAt: '2026-01-01T00:00:00Z',
           thumbnailUrl: '/api/memories/memory-video/thumbnail',
+          isFavorite: false,
+          favoritedAt: null,
         },
       ],
       page: 0,
@@ -355,5 +397,140 @@ describe('App video preview fallback', () => {
     await waitFor(() => {
       expect(getMemoryDetailMock).toHaveBeenCalledWith('memory-video');
     });
+  });
+});
+
+describe('App favorites', () => {
+  it('loads favorite memories from the Favorites page', async () => {
+    const user = userEvent.setup();
+
+    getMemorySourcesMock.mockResolvedValue([buildSource()]);
+    getTimelineYearsMock.mockResolvedValue([{ year: 2026, memoryCount: 1 }]);
+    getFavoriteMemoriesMock.mockResolvedValue({
+      content: [
+        {
+          id: 'memory-favorite',
+          capturedAt: '2026-02-03',
+          mediaType: 'IMAGE',
+          hasOverlay: false,
+          fileSizeBytes: 2048,
+          lastModifiedAt: '2026-02-03T00:00:00Z',
+          thumbnailUrl: '/api/memories/memory-favorite/thumbnail',
+          isFavorite: true,
+          favoritedAt: '2026-07-18T10:15:30Z',
+        },
+      ],
+      page: 0,
+      size: 48,
+      totalElements: 1,
+      totalPages: 1,
+    });
+
+    render(<App />);
+
+    await user.click(await screen.findByRole('button', { name: 'Favorites' }));
+
+    expect(
+      await screen.findByRole('heading', { name: 'Favorites' }),
+    ).toBeInTheDocument();
+    expect(screen.getByAltText('Memory from 2026-02-03')).toBeInTheDocument();
+    expect(getFavoriteMemoriesMock).toHaveBeenCalledWith(0, 48);
+  });
+
+  it('shows the empty Favorites state', async () => {
+    const user = userEvent.setup();
+
+    getMemorySourcesMock.mockResolvedValue([buildSource()]);
+    getTimelineYearsMock.mockResolvedValue([{ year: 2026, memoryCount: 0 }]);
+
+    render(<App />);
+
+    await user.click(await screen.findByRole('button', { name: 'Favorites' }));
+
+    expect(await screen.findByText('No favorites yet.')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Mark memories with the heart icon to find them here later.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('rolls back optimistic favorite state when the API fails', async () => {
+    const user = userEvent.setup();
+
+    getMemorySourcesMock.mockResolvedValue([buildSource()]);
+    getTimelineYearsMock.mockResolvedValue([{ year: 2026, memoryCount: 1 }]);
+    getMemoriesMock.mockResolvedValue({
+      content: [
+        {
+          id: 'memory-video',
+          capturedAt: '2026-01-01',
+          mediaType: 'VIDEO',
+          hasOverlay: false,
+          fileSizeBytes: 1024,
+          lastModifiedAt: '2026-01-01T00:00:00Z',
+          thumbnailUrl: '/api/memories/memory-video/thumbnail',
+          isFavorite: false,
+          favoritedAt: null,
+        },
+      ],
+      page: 0,
+      size: 48,
+      totalElements: 1,
+      totalPages: 1,
+    });
+    addMemoryFavoriteMock.mockRejectedValue(new Error('failed'));
+
+    render(<App />);
+
+    const favoriteButton = await screen.findByRole('button', {
+      name: 'Add to Favorites',
+    });
+
+    await user.click(favoriteButton);
+
+    await waitFor(() => {
+      expect(addMemoryFavoriteMock).toHaveBeenCalledWith('memory-video');
+    });
+    expect(
+      await screen.findByText('Could not update Favorites. Try again.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Add to Favorites' }),
+    ).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('keeps favorite state after refetching the archive', async () => {
+    const user = userEvent.setup();
+
+    getMemorySourcesMock.mockResolvedValue([buildSource()]);
+    getTimelineYearsMock.mockResolvedValue([{ year: 2026, memoryCount: 1 }]);
+    getMemoriesMock.mockResolvedValue({
+      content: [
+        {
+          id: 'memory-video',
+          capturedAt: '2026-01-01',
+          mediaType: 'VIDEO',
+          hasOverlay: false,
+          fileSizeBytes: 1024,
+          lastModifiedAt: '2026-01-01T00:00:00Z',
+          thumbnailUrl: '/api/memories/memory-video/thumbnail',
+          isFavorite: true,
+          favoritedAt: '2026-07-18T10:15:30Z',
+        },
+      ],
+      page: 0,
+      size: 48,
+      totalElements: 1,
+      totalPages: 1,
+    });
+
+    render(<App />);
+
+    await user.click(await screen.findByRole('button', { name: 'Archive' }));
+
+    expect(
+      await screen.findByRole('button', { name: 'Remove from Favorites' }),
+    ).toHaveAttribute('aria-pressed', 'true');
   });
 });

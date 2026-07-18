@@ -5,6 +5,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { prepareCompatibilityPlayback } from '../api/memoriaVaultApi';
 import { MemoryViewer } from './MemoryViewer';
@@ -26,6 +27,37 @@ afterEach(() => {
 });
 
 describe('MemoryViewer', () => {
+  it('toggles favorite state from the detail view', async () => {
+    const onToggleFavorite = vi.fn();
+
+    render(
+      <MemoryViewer
+        error={null}
+        isLoading={false}
+        memory={{
+          id: 'memory-1',
+          capturedAt: '2020-06-10',
+          mediaType: 'IMAGE',
+          hasOverlay: false,
+          fileSizeBytes: 1_500_000,
+          lastModifiedAt: '2020-06-10T10:00:00Z',
+          mediaUrl: '/api/memories/memory-1/media',
+          overlayUrl: null,
+          isFavorite: false,
+          favoritedAt: null,
+        }}
+        onClose={vi.fn()}
+        onToggleFavorite={onToggleFavorite}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Add to Favorites' }),
+    );
+
+    expect(onToggleFavorite).toHaveBeenCalledWith('memory-1', true);
+  });
+
   it('renders an image memory', () => {
     render(
       <MemoryViewer
@@ -40,6 +72,8 @@ describe('MemoryViewer', () => {
           lastModifiedAt: '2020-06-10T10:00:00Z',
           mediaUrl: '/api/memories/memory-1/media',
           overlayUrl: null,
+          isFavorite: false,
+          favoritedAt: null,
         }}
         onClose={vi.fn()}
       />,
@@ -81,6 +115,8 @@ describe('MemoryViewer', () => {
           lastModifiedAt: '2020-06-10T10:00:00Z',
           mediaUrl: '/api/memories/memory-1/media',
           overlayUrl: null,
+          isFavorite: false,
+          favoritedAt: null,
         }}
         onClose={vi.fn()}
       />,
@@ -130,6 +166,8 @@ describe('MemoryViewer', () => {
           lastModifiedAt: '2020-06-10T10:00:00Z',
           mediaUrl: '/api/memories/memory-video/media',
           overlayUrl: null,
+          isFavorite: false,
+          favoritedAt: null,
         }}
         onClose={vi.fn()}
       />,
@@ -193,6 +231,8 @@ describe('MemoryViewer', () => {
           lastModifiedAt: '2020-06-10T10:00:00Z',
           mediaUrl: '/api/memories/memory-video/media',
           overlayUrl: null,
+          isFavorite: false,
+          favoritedAt: null,
         }}
         onClose={vi.fn()}
       />,

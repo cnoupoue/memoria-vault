@@ -16,6 +16,8 @@ export type Memory = {
   fileSizeBytes: number;
   lastModifiedAt: string;
   thumbnailUrl: string | null;
+  isFavorite: boolean;
+  favoritedAt: string | null;
 };
 
 export type MemoryPage = {
@@ -35,6 +37,8 @@ export type MemoryDetail = {
   lastModifiedAt: string;
   mediaUrl: string;
   overlayUrl: string | null;
+  isFavorite: boolean;
+  favoritedAt: string | null;
 };
 
 export type FlashbackMemory = {

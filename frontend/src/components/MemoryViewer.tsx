@@ -17,6 +17,7 @@ type MemoryViewerProps = {
   isLoading: boolean;
   error: string | null;
   onClose: () => void;
+  onToggleFavorite?: (memoryId: string, nextFavorite: boolean) => void;
 };
 
 export function MemoryViewer({
@@ -24,6 +25,7 @@ export function MemoryViewer({
   isLoading,
   error,
   onClose,
+  onToggleFavorite,
 }: MemoryViewerProps) {
   const [mediaErrorMemoryId, setMediaErrorMemoryId] = useState<string | null>(
     null,
@@ -190,6 +192,25 @@ export function MemoryViewer({
         >
           Close
         </button>
+
+        {!isLoading && !error && memory && onToggleFavorite && (
+          <button
+            aria-label={
+              memory.isFavorite ? 'Remove from Favorites' : 'Add to Favorites'
+            }
+            aria-pressed={memory.isFavorite}
+            className={`memory-viewer-favorite ${
+              memory.isFavorite ? 'is-favorite' : ''
+            }`}
+            onClick={() => onToggleFavorite(memory.id, !memory.isFavorite)}
+            title={
+              memory.isFavorite ? 'Remove from Favorites' : 'Add to Favorites'
+            }
+            type="button"
+          >
+            <span aria-hidden="true">{memory.isFavorite ? '♥' : '♡'}</span>
+          </button>
+        )}
 
         {isLoading && (
           <div className="memory-viewer-state">Opening memory…</div>

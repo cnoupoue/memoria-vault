@@ -3,6 +3,7 @@ import type {
   Diagnostics,
   FlashbackResponse,
   FolderSelection,
+  Memory,
   MemoryDetail,
   MemoryPage,
   MemorySource,
@@ -96,8 +97,29 @@ export function getMemories(
   return request<MemoryPage>(`/api/memories?${params.toString()}`);
 }
 
+export function getFavoriteMemories(page = 0, size = 48): Promise<MemoryPage> {
+  const params = new URLSearchParams({
+    page: String(page),
+    size: String(size),
+  });
+
+  return request<MemoryPage>(`/api/memories/favorites?${params.toString()}`);
+}
+
 export function getMemoryDetail(memoryId: string): Promise<MemoryDetail> {
   return request<MemoryDetail>(`/api/memories/${memoryId}`);
+}
+
+export function addMemoryFavorite(memoryId: string): Promise<Memory> {
+  return request<Memory>(`/api/memories/${memoryId}/favorite`, {
+    method: 'PUT',
+  });
+}
+
+export function removeMemoryFavorite(memoryId: string): Promise<Memory> {
+  return request<Memory>(`/api/memories/${memoryId}/favorite`, {
+    method: 'DELETE',
+  });
 }
 
 export function prepareCompatibilityPlayback(

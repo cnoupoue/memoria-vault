@@ -422,14 +422,12 @@ a:focus-visible {
 }
 
 .memory-card {
+  position: relative;
   overflow: hidden;
-  padding: 0;
   color: inherit;
-  cursor: pointer;
   background: var(--panel-solid);
   border: 1px solid var(--line-soft);
   border-radius: var(--radius);
-  text-align: left;
   box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
   transition:
     transform 180ms ease,
@@ -441,6 +439,17 @@ a:focus-visible {
   border-color: #d7d7db;
   box-shadow: var(--shadow-soft);
   transform: translateY(-2px);
+}
+
+.memory-card-open {
+  display: grid;
+  width: 100%;
+  padding: 0;
+  color: inherit;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  text-align: left;
 }
 
 .memory-preview {
@@ -552,6 +561,45 @@ a:focus-visible {
   flex: 0 0 auto;
   color: var(--subtle);
   font-size: 0.76rem;
+}
+
+.favorite-button,
+.memory-viewer-favorite {
+  display: grid;
+  place-items: center;
+  color: white;
+  cursor: pointer;
+  background: rgb(22 22 24 / 58%);
+  border: 1px solid rgb(255 255 255 / 22%);
+  border-radius: 999px;
+  backdrop-filter: blur(14px);
+  transition:
+    background 160ms ease,
+    transform 160ms ease,
+    color 160ms ease;
+}
+
+.favorite-button {
+  position: absolute;
+  z-index: 2;
+  right: 9px;
+  bottom: 50px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  font-size: 1.18rem;
+}
+
+.favorite-button:hover,
+.memory-viewer-favorite:hover {
+  background: rgb(22 22 24 / 78%);
+  transform: translateY(-1px);
+}
+
+.favorite-button.is-favorite,
+.memory-viewer-favorite.is-favorite {
+  color: #ff6f91;
+  background: rgb(22 22 24 / 74%);
 }
 
 .state-message,
@@ -689,6 +737,17 @@ a:focus-visible {
   backdrop-filter: blur(14px);
   font-size: 0.82rem;
   font-weight: 700;
+}
+
+.memory-viewer-favorite {
+  position: absolute;
+  z-index: 3;
+  top: 14px;
+  right: 82px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  font-size: 1.2rem;
 }
 
 .memory-viewer-close:hover {
