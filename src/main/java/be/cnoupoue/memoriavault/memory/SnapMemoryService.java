@@ -74,7 +74,10 @@ public class SnapMemoryService {
         PageRequest.of(
             validatedPage,
             validatedSize,
-            Sort.by(Sort.Order.desc("favoritedAt"), Sort.Order.desc("createdAt")));
+            Sort.by(
+                Sort.Order.desc("capturedAt"),
+                Sort.Order.desc("lastModifiedAt"),
+                Sort.Order.desc("createdAt")));
 
     Page<SnapMemory> memoryPage = snapMemoryRepository.findFavorites(pageRequest);
     List<MemoryResponse> content = memoryPage.getContent().stream().map(this::toResponse).toList();

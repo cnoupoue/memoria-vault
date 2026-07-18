@@ -11,6 +11,12 @@ public interface SnapMemoryRepository extends JpaRepository<SnapMemory, String> 
 
   Page<SnapMemory> findByCapturedAtStartingWith(String capturedAtPrefix, Pageable pageable);
 
+  List<SnapMemory> findBySourceId(String sourceId);
+
+  List<SnapMemory> findBySourceIdAndIsFavoriteTrue(String sourceId);
+
+  long countBySourceIdAndIsFavoriteTrue(String sourceId);
+
   @Query(
       """
       SELECT memory

@@ -8,6 +8,7 @@ import {
 import {
   createMemorySource,
   deleteMemorySource,
+  exportMemorySourceFavoritesBackup,
   getDiagnostics,
   getLatestMemorySourceScan,
   getMemoryScanJob,
@@ -82,6 +83,21 @@ function getSourceStateLabel(
   }
 
   return getAvailabilityLabel(source.availabilityStatus);
+}
+
+function downloadFavoritesBackup(source: MemorySource, backup: unknown) {
+  const blob = new Blob([JSON.stringify(backup, null, 2)], {
+    type: 'application/json',
+  });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+
+  link.href = url;
+  link.download = `memoria-vault-favorites-backup-${source.id}.json`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function getVideoPreviewStatus(diagnostics: Diagnostics): string {
@@ -221,6 +237,9 @@ export function SettingsPage({
   );
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [scanJob, setScanJob] = useState<MemoryScanJob | null>(null);
+  const [pendingRescanSource, setPendingRescanSource] =
+    useState<MemorySource | null>(null);
+  const [isBackingUpFavorites, setIsBackingUpFavorites] = useState(false);
   const [diagnostics, setDiagnostics] = useState<Diagnostics | null>(null);
   const [isDiagnosticsLoading, setIsDiagnosticsLoading] = useState(true);
   const [diagnosticsError, setDiagnosticsError] = useState<string | null>(null);
@@ -527,6 +546,17 @@ export function SettingsPage({
   }
 
   async function handleScan(source: MemorySource) {
+    if (source.favoriteCount > 0) {
+      setPendingRescanSource(source);
+      setError(null);
+      setSuccessMessage(null);
+      return;
+    }
+
+    await startScan(source);
+  }
+
+  async function startScan(source: MemorySource) {
     setError(null);
     setSuccessMessage(null);
     setScanJob(null);
@@ -542,6 +572,21 @@ export function SettingsPage({
           ? scanError.message
           : 'Could not start this scan. A scan may already be running for this source.',
       );
+    }
+  }
+
+  async function handleBackupFavorites(source: MemorySource) {
+    setIsBackingUpFavorites(true);
+    setError(null);
+
+    try {
+      const backup = await exportMemorySourceFavoritesBackup(source.id);
+      downloadFavoritesBackup(source, backup);
+      setSuccessMessage('Favorites backup downloaded.');
+    } catch {
+      setError('Could not export favorites backup.');
+    } finally {
+      setIsBackingUpFavorites(false);
     }
   }
 
@@ -657,6 +702,52 @@ export function SettingsPage({
               {scanJob.mainVideos.toLocaleString()} videos
             </span>
           )}
+        </div>
+      )}
+
+      {pendingRescanSource && (
+        <div aria-modal="true" className="confirmation-backdrop" role="dialog">
+          <section className="confirmation-dialog">
+            <h3>Rescan source?</h3>
+            <p>
+              Rescanning this source preserves favorites for memories that are
+              still found. Favorites linked to memories that are no longer
+              present may be removed.
+            </p>
+            <p>
+              This source currently has{' '}
+              {pendingRescanSource.favoriteCount.toLocaleString()} favorite
+              {pendingRescanSource.favoriteCount === 1 ? '' : 's'}.
+            </p>
+            <div className="confirmation-actions">
+              <button
+                className="secondary-button"
+                onClick={() => setPendingRescanSource(null)}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="secondary-button"
+                disabled={isBackingUpFavorites}
+                onClick={() => void handleBackupFavorites(pendingRescanSource)}
+                type="button"
+              >
+                {isBackingUpFavorites ? 'Backing up…' : 'Back up favorites'}
+              </button>
+              <button
+                className="primary-button"
+                onClick={() => {
+                  const source = pendingRescanSource;
+                  setPendingRescanSource(null);
+                  void startScan(source);
+                }}
+                type="button"
+              >
+                Continue rescan
+              </button>
+            </div>
+          </section>
         </div>
       )}
 
@@ -881,6 +972,10 @@ export function SettingsPage({
                   <div className="source-card-meta">
                     <span>Last scan: {formatDate(source.lastScanAt)}</span>
                     <span>{getStatusLabel(source.lastScanStatus)}</span>
+                    <span>
+                      {source.favoriteCount.toLocaleString()} favorite
+                      {source.favoriteCount === 1 ? '' : 's'}
+                    </span>
                   </div>
 
                   {isUnavailable && (

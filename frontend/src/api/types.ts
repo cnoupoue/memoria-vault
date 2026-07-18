@@ -64,8 +64,25 @@ export type MemorySource = {
   lastScanStatus: string | null;
   availabilityStatus: SourceAvailabilityStatus;
   availabilityMessage: string;
+  favoriteCount: number;
   createdAt: string;
   updatedAt: string;
+};
+
+export type FavoriteBackupMemory = {
+  memoryId: string;
+  externalMemoryId: string;
+  capturedAt: string;
+  mediaType: 'IMAGE' | 'VIDEO';
+  mainPath: string;
+  favoritedAt: string | null;
+};
+
+export type FavoritesBackup = {
+  version: number;
+  exportedAt: string;
+  sourceId: string;
+  favorites: FavoriteBackupMemory[];
 };
 
 export type SourceAvailabilityStatus =

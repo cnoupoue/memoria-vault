@@ -1,6 +1,7 @@
 import type {
   CreateMemorySourceRequest,
   Diagnostics,
+  FavoritesBackup,
   FlashbackResponse,
   FolderSelection,
   Memory,
@@ -165,6 +166,12 @@ export function getMemorySourceAvailability(
   sourceId: string,
 ): Promise<SourceAvailability> {
   return request<SourceAvailability>(`/api/sources/${sourceId}/availability`);
+}
+
+export function exportMemorySourceFavoritesBackup(
+  sourceId: string,
+): Promise<FavoritesBackup> {
+  return request<FavoritesBackup>(`/api/sources/${sourceId}/favorites-backup`);
 }
 
 export function createMemorySource(

@@ -128,4 +128,14 @@ public class SnapMemory {
       this.updatedAt = updatedAt;
     }
   }
+
+  public void updateIndexedMetadata(SnapMemory scannedMemory) {
+    this.capturedAt = scannedMemory.capturedAt;
+    this.mediaType = scannedMemory.mediaType;
+    this.mainPath = scannedMemory.mainPath;
+    this.overlayPath = scannedMemory.overlayPath;
+    this.fileSizeBytes = scannedMemory.fileSizeBytes;
+    this.lastModifiedAt = scannedMemory.lastModifiedAt;
+    this.updatedAt = scannedMemory.updatedAt;
+  }
 }

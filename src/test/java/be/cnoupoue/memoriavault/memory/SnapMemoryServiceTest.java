@@ -186,7 +186,7 @@ class SnapMemoryServiceTest {
   }
 
   @Test
-  void listsFavoritesWithFavoriteDateNewestFirstSort() {
+  void listsFavoritesWithMemoryDateNewestFirstSortAndStableFallbacks() {
     SnapMemoryService service = new SnapMemoryService(snapMemoryRepository);
     SnapMemory favorite =
         memory(
@@ -201,7 +201,11 @@ class SnapMemoryServiceTest {
     verify(snapMemoryRepository).findFavorites(pageableCaptor.capture());
     assertThat(pageableCaptor.getValue().getPageNumber()).isZero();
     assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(100);
-    assertThat(pageableCaptor.getValue().getSort().getOrderFor("favoritedAt").isDescending())
+    assertThat(pageableCaptor.getValue().getSort().getOrderFor("capturedAt").isDescending())
+        .isTrue();
+    assertThat(pageableCaptor.getValue().getSort().getOrderFor("lastModifiedAt").isDescending())
+        .isTrue();
+    assertThat(pageableCaptor.getValue().getSort().getOrderFor("createdAt").isDescending())
         .isTrue();
     assertThat(response.content()).hasSize(1);
     assertThat(response.content().getFirst().isFavorite()).isTrue();

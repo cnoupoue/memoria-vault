@@ -8,6 +8,7 @@ import { SettingsPage } from './SettingsPage';
 vi.mock('../api/memoriaVaultApi', () => ({
   createMemorySource: vi.fn(),
   deleteMemorySource: vi.fn(),
+  exportMemorySourceFavoritesBackup: vi.fn(),
   getDiagnostics: vi.fn(),
   getLatestMemorySourceScan: vi.fn().mockRejectedValue(new Error('No scan')),
   getMemoryScanJob: vi.fn(),
@@ -37,6 +38,7 @@ vi.mock('../api/memoriaVaultApi', () => ({
 import {
   createMemorySource,
   deleteMemorySource,
+  exportMemorySourceFavoritesBackup,
   getDiagnostics,
   getMemorySourceAvailability,
   getMemorySources,
@@ -47,6 +49,9 @@ import {
 
 const createMemorySourceMock = vi.mocked(createMemorySource);
 const deleteMemorySourceMock = vi.mocked(deleteMemorySource);
+const exportMemorySourceFavoritesBackupMock = vi.mocked(
+  exportMemorySourceFavoritesBackup,
+);
 const getDiagnosticsMock = vi.mocked(getDiagnostics);
 const getMemorySourcesMock = vi.mocked(getMemorySources);
 const getMemorySourceAvailabilityMock = vi.mocked(getMemorySourceAvailability);
@@ -83,6 +88,7 @@ function buildSource(source: Partial<MemorySource>): MemorySource {
     lastScanStatus: 'NOT_SCANNED',
     availabilityStatus: 'AVAILABLE',
     availabilityMessage: 'Source folder is available.',
+    favoriteCount: 0,
     createdAt: '2026-01-01T00:00:00Z',
     updatedAt: '2026-01-01T00:00:00Z',
     ...source,
@@ -588,6 +594,109 @@ Local database: Ready`);
       expect(startMemorySourceScanMock).toHaveBeenCalledWith(source.id);
     });
     expect(screen.getByText('Scanning memories…')).toBeInTheDocument();
+  });
+
+  it('warns before rescanning a source with favorites and cancels safely', async () => {
+    const user = userEvent.setup();
+
+    getMemorySourcesMock.mockResolvedValue([buildSource({ favoriteCount: 2 })]);
+
+    render(<SettingsPage onSourceScanned={vi.fn()} />);
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Scan source' }),
+    );
+
+    expect(screen.getByRole('dialog')).toHaveTextContent(
+      'Favorites linked to memories that are no longer present may be removed.',
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(startMemorySourceScanMock).not.toHaveBeenCalled();
+  });
+
+  it('continues rescan after favorite warning confirmation', async () => {
+    const user = userEvent.setup();
+
+    getMemorySourcesMock.mockResolvedValue([buildSource({ favoriteCount: 1 })]);
+    startMemorySourceScanMock.mockResolvedValue({
+      id: 'scan-1',
+      sourceId: 'source-1',
+      status: 'RUNNING',
+      totalFiles: 0,
+      filesProcessed: 0,
+      mainImages: 0,
+      mainVideos: 0,
+      overlays: 0,
+      indexedMemories: 0,
+      attachedOverlays: 0,
+      unmatchedOverlays: 0,
+      unsupportedFiles: 0,
+      unreadableFiles: 0,
+      errorMessage: null,
+      startedAt: '2026-01-01T00:00:00Z',
+      completedAt: null,
+      updatedAt: '2026-01-01T00:00:00Z',
+    });
+
+    render(<SettingsPage onSourceScanned={vi.fn()} />);
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Scan source' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Continue rescan' }));
+
+    expect(startMemorySourceScanMock).toHaveBeenCalledWith('source-1');
+  });
+
+  it('backs up favorites from the rescan warning', async () => {
+    const user = userEvent.setup();
+    const appendSpy = vi.spyOn(document.body, 'append');
+    const createObjectUrlSpy = vi
+      .spyOn(URL, 'createObjectURL')
+      .mockReturnValue('blob:backup');
+    const revokeObjectUrlSpy = vi
+      .spyOn(URL, 'revokeObjectURL')
+      .mockImplementation(() => {});
+
+    HTMLAnchorElement.prototype.click = vi.fn();
+    getMemorySourcesMock.mockResolvedValue([buildSource({ favoriteCount: 1 })]);
+    exportMemorySourceFavoritesBackupMock.mockResolvedValue({
+      version: 1,
+      exportedAt: '2026-07-18T00:00:00Z',
+      sourceId: 'source-1',
+      favorites: [
+        {
+          memoryId: 'memory-1',
+          externalMemoryId: 'external-1',
+          capturedAt: '2024-01-01',
+          mediaType: 'IMAGE',
+          mainPath: '/local/export/memory.jpg',
+          favoritedAt: '2026-07-18T10:00:00Z',
+        },
+      ],
+    });
+
+    render(<SettingsPage onSourceScanned={vi.fn()} />);
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Scan source' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Back up favorites' }));
+
+    await waitFor(() => {
+      expect(exportMemorySourceFavoritesBackupMock).toHaveBeenCalledWith(
+        'source-1',
+      );
+    });
+    expect(createObjectUrlSpy).toHaveBeenCalledWith(expect.any(Blob));
+    expect(appendSpy).toHaveBeenCalledWith(expect.any(HTMLAnchorElement));
+    expect(revokeObjectUrlSpy).toHaveBeenCalledWith('blob:backup');
+    expect(
+      screen.getByText('Favorites backup downloaded.'),
+    ).toBeInTheDocument();
   });
 
   it('removes a deleted source from the UI and notifies the parent', async () => {

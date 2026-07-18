@@ -2,7 +2,11 @@ package be.cnoupoue.memoriavault.source;
 
 import be.cnoupoue.memoriavault.indexing.MemoryIndexPersistence;
 import be.cnoupoue.memoriavault.indexing.MemoryScanJobRepository;
+import be.cnoupoue.memoriavault.memory.SnapMemory;
+import be.cnoupoue.memoriavault.memory.SnapMemoryRepository;
 import be.cnoupoue.memoriavault.source.api.CreateMemorySourceRequest;
+import be.cnoupoue.memoriavault.source.api.FavoriteBackupMemoryResponse;
+import be.cnoupoue.memoriavault.source.api.FavoritesBackupResponse;
 import be.cnoupoue.memoriavault.source.api.MemorySourceResponse;
 import be.cnoupoue.memoriavault.source.api.SourceAvailabilityResponse;
 import java.nio.file.Path;
@@ -20,16 +24,19 @@ public class MemorySourceService {
   private final SourceAvailabilityService sourceAvailabilityService;
   private final MemoryIndexPersistence memoryIndexPersistence;
   private final MemoryScanJobRepository memoryScanJobRepository;
+  private final SnapMemoryRepository snapMemoryRepository;
 
   public MemorySourceService(
       MemorySourceRepository memorySourceRepository,
       SourceAvailabilityService sourceAvailabilityService,
       MemoryIndexPersistence memoryIndexPersistence,
-      MemoryScanJobRepository memoryScanJobRepository) {
+      MemoryScanJobRepository memoryScanJobRepository,
+      SnapMemoryRepository snapMemoryRepository) {
     this.memorySourceRepository = memorySourceRepository;
     this.sourceAvailabilityService = sourceAvailabilityService;
     this.memoryIndexPersistence = memoryIndexPersistence;
     this.memoryScanJobRepository = memoryScanJobRepository;
+    this.snapMemoryRepository = snapMemoryRepository;
   }
 
   public MemorySourceResponse create(CreateMemorySourceRequest request) {
@@ -70,6 +77,18 @@ public class MemorySourceService {
   }
 
   @Transactional(readOnly = true)
+  public FavoritesBackupResponse exportFavoritesBackup(String sourceId) {
+    MemorySource source = findById(sourceId);
+
+    List<FavoriteBackupMemoryResponse> favorites =
+        snapMemoryRepository.findBySourceIdAndIsFavoriteTrue(source.getId()).stream()
+            .map(this::toFavoriteBackupMemoryResponse)
+            .toList();
+
+    return new FavoritesBackupResponse(1, Instant.now().toString(), source.getId(), favorites);
+  }
+
+  @Transactional(readOnly = true)
   public MemorySource findById(String sourceId) {
     return memorySourceRepository
         .findById(sourceId)
@@ -91,8 +110,19 @@ public class MemorySourceService {
         source.getLastScanStatus(),
         availability.status().name(),
         availability.message(),
+        snapMemoryRepository.countBySourceIdAndIsFavoriteTrue(source.getId()),
         source.getCreatedAt(),
         source.getUpdatedAt());
+  }
+
+  private FavoriteBackupMemoryResponse toFavoriteBackupMemoryResponse(SnapMemory memory) {
+    return new FavoriteBackupMemoryResponse(
+        memory.getId(),
+        memory.getExternalMemoryId(),
+        memory.getCapturedAt(),
+        memory.getMediaType().name(),
+        memory.getMainPath(),
+        memory.getFavoritedAt());
   }
 
   public void delete(String sourceId) {

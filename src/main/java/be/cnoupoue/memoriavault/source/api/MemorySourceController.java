@@ -47,6 +47,11 @@ public class MemorySourceController {
     return memorySourceService.checkAvailability(id);
   }
 
+  @GetMapping("/{id}/favorites-backup")
+  public FavoritesBackupResponse exportFavoritesBackup(@PathVariable String id) {
+    return memorySourceService.exportFavoritesBackup(id);
+  }
+
   @PostMapping("/{id}/scan")
   @ResponseStatus(HttpStatus.ACCEPTED)
   public MemoryScanJobResponse scan(@PathVariable String id) {

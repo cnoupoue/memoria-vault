@@ -9,6 +9,9 @@ import static org.mockito.Mockito.when;
 
 import be.cnoupoue.memoriavault.indexing.MemoryIndexPersistence;
 import be.cnoupoue.memoriavault.indexing.MemoryScanJobRepository;
+import be.cnoupoue.memoriavault.memory.SnapMemory;
+import be.cnoupoue.memoriavault.memory.SnapMemoryRepository;
+import be.cnoupoue.memoriavault.memory.SnapMemoryType;
 import be.cnoupoue.memoriavault.source.api.CreateMemorySourceRequest;
 import be.cnoupoue.memoriavault.source.api.MemorySourceResponse;
 import java.nio.file.Path;
@@ -29,6 +32,7 @@ class MemorySourceServiceTest {
   @Mock private MemorySourceRepository memorySourceRepository;
   @Mock private MemoryIndexPersistence memoryIndexPersistence;
   @Mock private MemoryScanJobRepository memoryScanJobRepository;
+  @Mock private SnapMemoryRepository snapMemoryRepository;
 
   @TempDir private Path temporaryDirectory;
 
@@ -40,7 +44,8 @@ class MemorySourceServiceTest {
             memorySourceRepository,
             availabilityService,
             memoryIndexPersistence,
-            memoryScanJobRepository);
+            memoryScanJobRepository,
+            snapMemoryRepository);
     Path rawPath = temporaryDirectory.resolve("snapchat-memories").resolve("..").resolve(".");
     String normalizedPath = rawPath.toAbsolutePath().normalize().toString();
     ArgumentCaptor<MemorySource> sourceCaptor = ArgumentCaptor.forClass(MemorySource.class);
@@ -68,7 +73,8 @@ class MemorySourceServiceTest {
             memorySourceRepository,
             availabilityService,
             memoryIndexPersistence,
-            memoryScanJobRepository);
+            memoryScanJobRepository,
+            snapMemoryRepository);
     String normalizedPath = temporaryDirectory.toAbsolutePath().normalize().toString();
 
     when(memorySourceRepository.existsByRootPath(normalizedPath)).thenReturn(true);
@@ -89,15 +95,18 @@ class MemorySourceServiceTest {
             memorySourceRepository,
             availabilityService,
             memoryIndexPersistence,
-            memoryScanJobRepository);
+            memoryScanJobRepository,
+            snapMemoryRepository);
     MemorySource source = source("source-1", temporaryDirectory);
 
     when(memorySourceRepository.findAll()).thenReturn(List.of(source));
+    when(snapMemoryRepository.countBySourceIdAndIsFavoriteTrue(source.getId())).thenReturn(2L);
 
     List<MemorySourceResponse> sources = service.findAll();
 
     assertThat(sources).hasSize(1);
     assertThat(sources.getFirst().availabilityStatus()).isEqualTo("AVAILABLE");
+    assertThat(sources.getFirst().favoriteCount()).isEqualTo(2);
   }
 
   @Test
@@ -108,7 +117,8 @@ class MemorySourceServiceTest {
             memorySourceRepository,
             availabilityService,
             memoryIndexPersistence,
-            memoryScanJobRepository);
+            memoryScanJobRepository,
+            snapMemoryRepository);
     MemorySource source = source("source-delete", temporaryDirectory);
 
     when(memorySourceRepository.findById(source.getId())).thenReturn(Optional.of(source));
@@ -124,6 +134,66 @@ class MemorySourceServiceTest {
     inOrder.verify(memorySourceRepository).deleteById(source.getId());
   }
 
+  @Test
+  void exportsFavoritesBackupWithStableIdentifiersAndFavoriteDates() {
+    SourceAvailabilityService availabilityService = new SourceAvailabilityService();
+    MemorySourceService service =
+        new MemorySourceService(
+            memorySourceRepository,
+            availabilityService,
+            memoryIndexPersistence,
+            memoryScanJobRepository,
+            snapMemoryRepository);
+    MemorySource source = source("source-1", temporaryDirectory);
+    SnapMemory favorite =
+        memory(
+            "memory-1",
+            source.getId(),
+            "external-1",
+            "2024-01-02",
+            SnapMemoryType.IMAGE,
+            "/local/export/memory.jpg",
+            true,
+            "2026-07-18T10:00:00Z");
+
+    when(memorySourceRepository.findById(source.getId())).thenReturn(Optional.of(source));
+    when(snapMemoryRepository.findBySourceIdAndIsFavoriteTrue(source.getId()))
+        .thenReturn(List.of(favorite));
+
+    var backup = service.exportFavoritesBackup(source.getId());
+
+    assertThat(backup.version()).isEqualTo(1);
+    assertThat(backup.sourceId()).isEqualTo(source.getId());
+    assertThat(backup.favorites()).hasSize(1);
+    assertThat(backup.favorites().getFirst().memoryId()).isEqualTo("memory-1");
+    assertThat(backup.favorites().getFirst().externalMemoryId()).isEqualTo("external-1");
+    assertThat(backup.favorites().getFirst().favoritedAt()).isEqualTo("2026-07-18T10:00:00Z");
+    assertThat(backup.favorites().getFirst().mainPath()).isEqualTo("/local/export/memory.jpg");
+  }
+
+  @Test
+  void exportsEmptyFavoritesBackup() {
+    SourceAvailabilityService availabilityService = new SourceAvailabilityService();
+    MemorySourceService service =
+        new MemorySourceService(
+            memorySourceRepository,
+            availabilityService,
+            memoryIndexPersistence,
+            memoryScanJobRepository,
+            snapMemoryRepository);
+    MemorySource source = source("source-1", temporaryDirectory);
+
+    when(memorySourceRepository.findById(source.getId())).thenReturn(Optional.of(source));
+    when(snapMemoryRepository.findBySourceIdAndIsFavoriteTrue(source.getId()))
+        .thenReturn(List.of());
+
+    var backup = service.exportFavoritesBackup(source.getId());
+
+    assertThat(backup.version()).isEqualTo(1);
+    assertThat(backup.sourceId()).isEqualTo(source.getId());
+    assertThat(backup.favorites()).isEmpty();
+  }
+
   private MemorySource source(String id, Path rootPath) {
     String now = Instant.now().toString();
 
@@ -135,5 +205,32 @@ class MemorySourceServiceTest {
         "NOT_SCANNED",
         now,
         now);
+  }
+
+  private SnapMemory memory(
+      String id,
+      String sourceId,
+      String externalMemoryId,
+      String capturedAt,
+      SnapMemoryType mediaType,
+      String mainPath,
+      boolean isFavorite,
+      String favoritedAt) {
+    String now = Instant.now().toString();
+
+    return new SnapMemory(
+        id,
+        sourceId,
+        externalMemoryId,
+        capturedAt,
+        mediaType,
+        mainPath,
+        null,
+        123,
+        now,
+        now,
+        now,
+        isFavorite,
+        favoritedAt);
   }
 }
