@@ -136,6 +136,88 @@ describe('MemoryViewer', () => {
     expect(onPrevious).not.toHaveBeenCalled();
   });
 
+  it('does not use arrow navigation while focus is inside editable controls', () => {
+    const onPrevious = vi.fn();
+    const onNext = vi.fn();
+
+    render(
+      <>
+        <input aria-label="Search" />
+        <textarea aria-label="Notes" />
+        <select aria-label="Filter">
+          <option>All</option>
+        </select>
+        <div aria-label="Editable" contentEditable role="textbox" />
+        <MemoryViewer
+          error={null}
+          hasNext
+          hasPrevious
+          isLoading={false}
+          memory={{
+            id: 'memory-1',
+            capturedAt: '2020-06-10',
+            mediaType: 'IMAGE',
+            hasOverlay: false,
+            fileSizeBytes: 1_500_000,
+            lastModifiedAt: '2020-06-10T10:00:00Z',
+            mediaUrl: '/api/memories/memory-1/media',
+            overlayUrl: null,
+            isFavorite: false,
+            favoritedAt: null,
+          }}
+          onClose={vi.fn()}
+          onNext={onNext}
+          onPrevious={onPrevious}
+        />
+      </>,
+    );
+
+    fireEvent.keyDown(screen.getByLabelText('Search'), { key: 'ArrowRight' });
+    fireEvent.keyDown(screen.getByLabelText('Notes'), { key: 'ArrowLeft' });
+    fireEvent.keyDown(screen.getByLabelText('Filter'), { key: 'ArrowRight' });
+    fireEvent.keyDown(screen.getByLabelText('Editable'), { key: 'ArrowLeft' });
+
+    expect(onNext).not.toHaveBeenCalled();
+    expect(onPrevious).not.toHaveBeenCalled();
+  });
+
+  it('ignores arrow navigation events with modifier keys', () => {
+    const onPrevious = vi.fn();
+    const onNext = vi.fn();
+
+    render(
+      <MemoryViewer
+        error={null}
+        hasNext
+        hasPrevious
+        isLoading={false}
+        memory={{
+          id: 'memory-1',
+          capturedAt: '2020-06-10',
+          mediaType: 'IMAGE',
+          hasOverlay: false,
+          fileSizeBytes: 1_500_000,
+          lastModifiedAt: '2020-06-10T10:00:00Z',
+          mediaUrl: '/api/memories/memory-1/media',
+          overlayUrl: null,
+          isFavorite: false,
+          favoritedAt: null,
+        }}
+        onClose={vi.fn()}
+        onNext={onNext}
+        onPrevious={onPrevious}
+      />,
+    );
+
+    fireEvent.keyDown(window, { key: 'ArrowRight', metaKey: true });
+    fireEvent.keyDown(window, { key: 'ArrowRight', ctrlKey: true });
+    fireEvent.keyDown(window, { key: 'ArrowLeft', altKey: true });
+    fireEvent.keyDown(window, { key: 'ArrowLeft', shiftKey: true });
+
+    expect(onNext).not.toHaveBeenCalled();
+    expect(onPrevious).not.toHaveBeenCalled();
+  });
+
   it('stops the previous video when navigating away from it', () => {
     const pauseSpy = vi
       .spyOn(HTMLMediaElement.prototype, 'pause')

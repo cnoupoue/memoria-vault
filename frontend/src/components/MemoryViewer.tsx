@@ -74,6 +74,10 @@ export function MemoryViewer({
         return;
       }
 
+      if (shouldIgnoreArrowNavigation(event)) {
+        return;
+      }
+
       if (event.key === 'ArrowLeft' && hasPrevious) {
         event.preventDefault();
         onPrevious?.();
@@ -380,6 +384,28 @@ function shouldAttemptCompatibilityPlayback(category: PlaybackFailureCategory) {
   return (
     category === 'VIDEO_FORMAT_UNSUPPORTED' ||
     category === 'BROWSER_MEDIA_ERROR'
+  );
+}
+
+function shouldIgnoreArrowNavigation(event: KeyboardEvent) {
+  if (
+    event.metaKey ||
+    event.ctrlKey ||
+    event.altKey ||
+    event.shiftKey ||
+    (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')
+  ) {
+    return true;
+  }
+
+  const target = event.target instanceof HTMLElement ? event.target : null;
+
+  return (
+    target?.tagName === 'INPUT' ||
+    target?.tagName === 'TEXTAREA' ||
+    target?.tagName === 'SELECT' ||
+    target?.isContentEditable === true ||
+    target?.getAttribute('contenteditable') === 'true'
   );
 }
 
