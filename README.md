@@ -273,7 +273,7 @@ dist/jpackage-input/
 Unlike the macOS release pipeline, Windows code-signing is disabled by default for this project. Once the input staging completes, you can build an unsigned standalone executable installer (.exe) by executing the jpackage command generated at the end of the script:
 
 ```powershell
-jpackage --type exe --dest "dist\installers" --name "Memoria Vault" --app-version <version> --vendor "cnoupoue" --input "dist\jpackage-input" --main-jar "memoria-vault-<version>.jar" --icon "packaging\windows\icon\MemoriaVault.ico" --win-shortcut --win-menu --jlink-options "--strip-debug --no-man-pages --no-header-files --compress zip-6"
+jpackage --type exe --dest "dist\installers" --name "Memoria Vault" --app-version 0.1.2 --vendor "cnoupoue" --input "dist\jpackage-input" --main-jar "memoria-vault-0.1.2-beta.8.jar" --main-class "org.springframework.boot.loader.launch.JarLauncher" --icon "packaging\windows\icon\MemoriaVault.ico" --win-shortcut --win-menu --jlink-options "--strip-debug --no-man-pages --no-header-files --compress zip-6"
 ```
 
 The resulting installer will be available under dist/installers/.
