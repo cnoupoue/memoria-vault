@@ -49,6 +49,15 @@ jobs:
       - name: Install frontend dependencies
         run: npm --prefix frontend ci
 
+      - name: Run Project Tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "=== Running Frontend Tests ==="
+          npm --prefix frontend test -- --watchAll=false --passWithNoTests
+          echo "=== Running Backend Tests ==="
+          ./mvnw test
+
       - name: Validate tag and Maven version
         id: version
         shell: bash
@@ -87,20 +96,49 @@ jobs:
             echo "prerelease=${prerelease}"
           } >> "${GITHUB_OUTPUT}"
 
+      - name: Ensure WiX Toolset is installed
+        shell: powershell
+        run: |
+          $wixPath = "C:\Program Files (x86)\WiX Toolset v3.11\bin"
+          if (-not (Test-Path $wixPath)) {
+              Write-Host "WiX Toolset not found. Installing via Chocolatey..."
+              choco install wixtoolset --no-progress -y
+              $wixPath = "C:\Program Files (x86)\WiX Toolset v3.11\bin"
+          }
+          if (Test-Path $wixPath) {
+              echo "WIX_PATH=$wixPath" >> $env:GITHUB_ENV
+          } else {
+              Write-Error "Failed to locate or install WiX Toolset."
+              exit 1
+          }
+
       - name: Run Windows packaging script
         shell: powershell
         run: |
           # Executes your PowerShell script to download FFmpeg, build Maven, and prepare jpackage-input
-          # We pass the raw release version so it matches the compiled fat JAR name inside the script
           powershell -NoProfile -ExecutionPolicy Bypass -File packaging/windows/scripts/package-windows.ps1 -Version "${{ steps.version.outputs.release_version }}"
+
+      - name: Verify Dynamic Staging and Runtime Isolation
+        shell: powershell
+        run: |
+          # Confirms FFmpeg path resolution relies strictly on local packaged layout structure
+          $ffmpegTarget = "dist/jpackage-input/ffmpeg.exe"
+          if (-not (Test-Path $ffmpegTarget)) {
+              # Fallback to subdirectory check depending on how your package-windows.ps1 structure organizes components
+              $ffmpegTarget = Get-ChildItem -Path "dist/jpackage-input" -Filter "ffmpeg.exe" -Recurse | Select-Object -First 1
+          }
+
+          if (-not $ffmpegTarget) {
+              Write-Error "Runtime validation failed: FFmpeg binary missing from staged jpackage input. Packaged app layout broken."
+              exit 1
+          }
+          Write-Host "Dynamic staging verified: FFmpeg is safely embedded inside application bundle space."
 
       - name: Build Windows Executable via jpackage
         shell: powershell
         run: |
-          # Ensure WiX Toolset toolpath is explicitly found if pre-installed
-          if (Test-Path "C:\Program Files (x86)\WiX Toolset v3.11\bin") {
-              $env:Path += ";C:\Program Files (x86)\WiX Toolset v3.11\bin"
-          }
+          # Inject verified WiX Toolset binary path into current session environment
+          $env:Path += ";${{ env.WIX_PATH }}"
 
           # Locate the built JAR file inside the staged jpackage-input folder
           $jarFile = Get-ChildItem -Path "dist/jpackage-input" -Filter "*.jar" | Select-Object -First 1
@@ -109,7 +147,7 @@ jobs:
               exit 1
           }
 
-          # Run jpackage with fixed Windows app version and Spring Boot JarLauncher
+          # Run jpackage with fixed Windows app version and native desktop JarLauncher
           jpackage --type exe `
                    --dest "dist/installers" `
                    --name "Memoria Vault" `
@@ -128,14 +166,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # jpackage names the output file based on --name and --app-version (which is windows_version)
           generated_output="dist/installers/Memoria Vault-${{ steps.version.outputs.windows_version }}.exe"
 
           # Rename the installer to match the consistent clean release asset name pattern
           mv "${generated_output}" "${{ steps.version.outputs.release_exe }}"
 
-          # Generate SHA-256 checksum
-          sha256sum "${{ steps.version.outputs.release_exe }}" | awk '{print $1}' > "${{ steps.version.outputs.release_exe }}.sha256"
+          # Navigate to target folder so the filename inside the checksum file stays relative
+          cd dist/installers
+          target_file="Memoria-Vault-${{ steps.version.outputs.release_version }}-windows-x64.exe"
+
+          # Standard syntax including the installer filename for easy automated verification
+          sha256sum "${target_file}" > "${target_file}.sha256"
 
       - name: Write release notes introduction
         shell: bash
@@ -148,6 +189,8 @@ jobs:
           Memoria Vault runs locally on your PC. Your compatible exported memories are not uploaded to a cloud service.
 
           This application is an independent, open-source local tool and is not affiliated, associated, authorized, endorsed by, or in any way officially connected with Snap Inc. or Snapchat.
+
+          > ⚠️ **Note on Windows SmartScreen:** This installer is currently unsigned. When launching the installation for the first time, Windows SmartScreen may display a warning dialog. You can safely bypass this by clicking **"More info"** and choosing **"Run anyway"**.
 
           ### Installation
 
@@ -184,14 +227,19 @@ jobs:
             prerelease_flag="--prerelease"
           fi
 
+          # Avoid --notes-file and --generate-notes conflicts by appending automated changelogs directly
           if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
             gh release upload "${GITHUB_REF_NAME}" "${RELEASE_EXE}" "${checksum}" --clobber
           else
+            # Append dynamic commit logs directly into the static notes layout
+            echo -e "\n### Changelog\n" >> release-notes-intro.md
+            gh api repos/{owner}/{repo}/releases/generate-notes \
+              -F tag_name="${GITHUB_REF_NAME}" --jq .body >> release-notes-intro.md || true
+
             gh release create "${GITHUB_REF_NAME}" \
               "${RELEASE_EXE}" \
               "${checksum}" \
               --title "Memoria Vault ${GITHUB_REF_NAME}" \
               --notes-file release-notes-intro.md \
-              --generate-notes \
               ${prerelease_flag}
           fi

@@ -1,9 +1,15 @@
-param(
+param (
     [string]$Version = "",
     [string]$Arch = "x64"
 )
 
 Set-StrictMode -Version Latest
+
+# Validate supported architecture early
+if ($Arch -ne "x64") {
+    Write-Error "Unsupported architecture: $Arch. Only 'x64' builds are currently supported for Windows packaging."
+    exit 1
+}
 
 $root = Resolve-Path .
 $dist = Join-Path $root 'dist'
@@ -11,126 +17,96 @@ $jpackageInput = Join-Path $dist 'jpackage-input'
 $ffmpegDir = Join-Path $root "packaging\windows\ffmpeg\win-$Arch"
 $ffmpegDest = Join-Path $ffmpegDir 'ffmpeg.exe'
 
-# 1. Clean extraction of version and artifactId from pom.xml
-$pomContent = Get-Content (Join-Path $root 'pom.xml') -Raw
-
-$artifactId = ""
-if ($pomContent -match '<artifactId>([^<]+)</artifactId>') {
-    $artifactId = $Matches[1].Trim()
-}
-
+Write-Host "=== RESOLVING MAVEN METADATA ==="
+# Query Maven directly for project version and artifact name instead of regex parsing
 if ([string]::IsNullOrEmpty($Version)) {
-    if ($pomContent -match '<version>([^<]+)</version>') {
-        $Version = $Matches[1].Trim()
-    } else {
-        $Version = "1.0.0"
-    }
+    $Version = (& .\mvnw.cmd -q -DforceStdout help:evaluate -Dexpression=project.version)
 }
+$finalName = (& .\mvnw.cmd -q -DforceStdout help:evaluate -Dexpression=project.build.finalName)
+$jarName = "$finalName.jar"
 
-# 2. Dynamic download of FFmpeg if missing
+Write-Host "Target Version: $Version"
+Write-Host "Expected JAR Name: $jarName"
+
+# 1. Secured, Hash-Verified FFmpeg Downloader
 if (-not (Test-Path $ffmpegDest)) {
-    Write-Host "FFmpeg not found in $ffmpegDest. Initializing dynamic download..."
+    Write-Host "FFmpeg binary missing in $ffmpegDest. Initializing pinned verification download..."
     New-Item -ItemType Directory -Path $ffmpegDir -Force | Out-Null
 
-    # URL of the stable essentials build of FFmpeg for Windows
-    $ffmpegUrl = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
+    # Pinned production-grade release of FFmpeg with cryptographic enforcement
+    $ffmpegUrl = "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-7.1-essentials_build.zip"
+    $expectedHash = "6ED8BCC0B426AB5B6AA36D2CB187E6924D5B1FE26B33D4F5A170F429BAFF89B5"
     $zipPath = Join-Path $ffmpegDir 'ffmpeg.zip'
 
-    Write-Host "Downloading FFmpeg from $ffmpegUrl ..."
+    Write-Host "Downloading pinned FFmpeg archive from $ffmpegUrl ..."
     Invoke-WebRequest -Uri $ffmpegUrl -OutFile $zipPath
 
-    Write-Host "Extracting ffmpeg.exe..."
+    Write-Host "Verifying SHA-256 checksum..."
+    $actualHash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash
+    if ($actualHash -ne $expectedHash) {
+        Remove-Item $zipPath -Force
+        throw "Cryptographic verification failed! Expected hash: $expectedHash, but got: $actualHash"
+    }
+    Write-Host "✓ FFmpeg archive integrity verified."
+
+    Write-Host "Extracting binaries..."
     $tempExtractDir = Join-Path $ffmpegDir 'temp_extract'
     Expand-Archive -Path $zipPath -DestinationPath $tempExtractDir -Force
 
-    # Recursive search for the extracted ffmpeg.exe to move it to the correct location
     $extractedExe = Get-ChildItem -Path $tempExtractDir -Filter 'ffmpeg.exe' -Recurse | Select-Object -First 1
     if ($extractedExe) {
         Move-Item $extractedExe.FullName -Destination $ffmpegDest -Force
-        Write-Host "FFmpeg successfully installed in $ffmpegDest"
+        Write-Host "✓ FFmpeg successfully isolated to $ffmpegDest"
     } else {
-        throw "Could not find ffmpeg.exe in the downloaded archive."
+        throw "Fatal: Could not locate ffmpeg.exe within the downloaded archive payload."
     }
 
-    # Clean up temporary files
+    # Clean up installation footprints
     Remove-Item $zipPath -Force
     Remove-Item -Recurse -Force $tempExtractDir -ErrorAction SilentlyContinue
 }
 
-# 3. Build production JAR
-Write-Host "Building production jar..."
-& .\mvnw.cmd -Pproduction -DskipTests package
-if ($LASTEXITCODE -ne 0) { throw "Maven build failed." }
+# 2. Executing Clean Maven Package
+Write-Host "Compiling production artifact via clean package..."
+# Note: The CI release workflow runs full test validation suites before invoking this script
+& .\mvnw.cmd clean package -Pproduction -DskipTests
+if ($LASTEXITCODE -ne 0) { throw "Maven compilation pipeline returned a non-zero exit code." }
 
-# 4. Prepare jpackage-input directory
-Write-Host "Preparing jpackage input directory: $jpackageInput"
+# 3. Setting Up Runtime Input Directory For jpackage
+Write-Host "Preparing jpackage isolated input staging: $jpackageInput"
 Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $jpackageInput
 New-Item -ItemType Directory -Path $jpackageInput | Out-Null
 
-# Explicit initialization to satisfy PowerShell StrictMode
-$jar = $null
-
-# Robust search for the compiled production JAR file
-$jarCandidates = Get-ChildItem -Path target -Filter '*.jar' -Recurse -ErrorAction SilentlyContinue |
-                 Where-Object { $_.Name -notmatch 'original' -and $_.Name -notmatch 'wrapper' } |
-                 Sort-Object Length -Descending
-
-if ($jarCandidates) {
-    # If candidates exist, select the largest one (the fat application JAR)
-    $jar = $jarCandidates | Select-Object -First 1
-}
-
-# Strict validation to prevent runtime errors down the line
-if ($null -eq $jar) {
-    Write-Error "Unable to locate any compiled JAR file in target/. Please ensure the Maven build succeeded."
+$targetJarPath = Join-Path $root "target\$jarName"
+if (-not (Test-Path $targetJarPath)) {
+    Write-Error "Expected artifact missing at $targetJarPath. Verify Maven configurations."
     exit 1
 }
 
-# Safely declare the name and format the size layout
-[string]$jarName = $jar.Name
-$jarSizeMB = [Math]::Round($jar.Length / 1MB, 2)
-Write-Host "Found target JAR: $jarName ($jarSizeMB MB)"
-Copy-Item $jar.FullName $jpackageInput
+Write-Host "Staging target deployment fat-JAR: $jarName"
+Copy-Item $targetJarPath $jpackageInput
 
-# Stage FFmpeg into the application input directory for jpackage ingestion
-if (Test-Path $ffmpegDest) {
-    $jpackageFfmpegDir = Join-Path $jpackageInput 'ffmpeg'
-    New-Item -ItemType Directory -Path $jpackageFfmpegDir -Force | Out-Null
-    Copy-Item $ffmpegDest (Join-Path $jpackageFfmpegDir 'ffmpeg.exe') -Force
-    Write-Host "Staged ffmpeg to $jpackageFfmpegDir\ffmpeg.exe"
-}
+# 4. Relative Ingestion of FFmpeg (No absolute CI paths baked in)
+$jpackageFfmpegDir = Join-Path $jpackageInput 'ffmpeg'
+New-Item -ItemType Directory -Path $jpackageFfmpegDir -Force | Out-Null
+Copy-Item $ffmpegDest (Join-Path $jpackageFfmpegDir 'ffmpeg.exe') -Force
+Write-Host "✓ Bundled FFmpeg staged into relative app folder layout structure."
 
-# 5. Automatically create/update local .env with absolute Windows paths
+# 5. Local Development Environment Instantiation Only
 $envFilePath = Join-Path $root '.env'
-$absoluteFfmpegPath = $ffmpegDest
-
-Write-Host "Updating local .env file with current absolute paths..."
-$ffmpegEnvLine = "MEMORIAVAULT_FFMPEG_PATH=$absoluteFfmpegPath"
-
-if (Test-Path $envFilePath) {
-    $content = Get-Content $envFilePath
-    if ($content -match 'MEMORIAVAULT_FFMPEG_PATH=') {
-        $content = $content -replace 'MEMORIAVAULT_FFMPEG_PATH=.*', $ffmpegEnvLine
-    } else {
-        $content += $ffmpegEnvLine
-    }
-    $content | Set-Content $envFilePath
-} else {
+if (-not (Test-Path $envFilePath)) {
+    Write-Host "Creating default development local environment profile (.env)..."
     $defaultContent = @(
-        "# Optional local overrides.",
-        "# MEMORIAVAULT_* names map to memoriavault.* Spring configuration keys.",
-        $ffmpegEnvLine,
+        "# Local developer runtime overrides.",
+        "MEMORIAVAULT_FFMPEG_PATH=$ffmpegDest",
         "MEMORIAVAULT_THUMBNAIL_DIRECTORY="
     )
     $defaultContent | Set-Content $envFilePath
 }
-Write-Host "✓ .env file updated with path: $absoluteFfmpegPath"
 
-# 6. Final instructions for jpackage execution
+# 6. Structured Payload Summary for jpackage
 Write-Host ""
-Write-Host "=== READY FOR JPACKAGE ==="
-Write-Host "Example command to run:"
-Write-Host "jpackage --type exe --dest `"$dist\installers`" --name `"Memoria Vault`" --app-version $Version --vendor `"cnoupoue`" --input `"$jpackageInput`" --main-jar `"$jarName`" --icon `"packaging\windows\icon\MemoriaVault.ico`" --win-shortcut --win-menu --jlink-options `"--strip-debug --no-man-pages --no-header-files --compress zip-6`""
+Write-Host "=== READY FOR JPACKAGE EXECUTION ==="
+Write-Host "Execute the following command sequence to produce the installer:"
+Write-Host "jpackage --type exe --dest `"$dist\installers`" --name `"Memoria Vault`" --app-version $Version --vendor `"cnoupoue`" --input `"$jpackageInput`" --main-jar `"$jarName`" --main-class `"org.springframework.boot.loader.launch.JarLauncher`" --icon `"packaging\windows\icon\MemoriaVault.ico`" --win-shortcut --win-menu --jlink-options `"--strip-debug --no-man-pages --no-header-files --compress zip-6`" --verbose"
 Write-Host ""
-Write-Host "If you need to extract and repack embedded native libraries"
-Write-Host "powershell -NoProfile -ExecutionPolicy Bypass -File packaging\windows\scripts\sign-sqlite-native-libs.ps1 -AppPath `"$jpackageInput\$jarName`"
