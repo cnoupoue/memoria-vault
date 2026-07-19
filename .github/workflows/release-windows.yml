@@ -1,0 +1,245 @@
+name: Release Windows x64
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-windows-x64-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release-windows-x64:
+    name: Build and publish Windows x64 release
+    runs-on: windows-latest
+
+    env:
+      HUSKY: 0
+
+    steps:
+      - name: Check out pushed tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+
+      - name: Install root tooling dependencies
+        run: npm ci
+
+      - name: Install frontend dependencies
+        run: npm --prefix frontend ci
+
+      - name: Run Project Tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "=== Running Frontend Tests ==="
+          npm --prefix frontend test -- --watchAll=false --passWithNoTests
+          echo "=== Running Backend Tests ==="
+          ./mvnw test
+
+      - name: Validate tag and Maven version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          if ! printf '%s\n' "${tag}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$' ; then
+            echo "::error::Release tags must use semantic version format such as v0.1.0 or v0.1.0-beta.1."
+            exit 1
+          fi
+
+          release_version="${tag#v}"
+          base_version="${release_version%%-*}"
+          maven_version="$(./mvnw -q -DforceStdout help:evaluate -Dexpression=project.version)"
+
+          if [ "${maven_version}" != "${release_version}" ] \
+            && [ "${maven_version}" != "${release_version}-SNAPSHOT" ] \
+            && [ "${maven_version}" != "${base_version}-SNAPSHOT" ]; then
+            echo "::error::Maven project version is not compatible with release tag."
+            exit 1
+          fi
+
+          # Sanitize version strictly for Windows Installer (e.g., 0.1.2-beta.8 -> 0.1.2)
+          windows_version="${base_version}"
+
+          prerelease=false
+          if printf '%s\n' "${release_version}" | grep -q -- '-'; then
+            prerelease=true
+          fi
+
+          {
+            echo "release_version=${release_version}"
+            echo "windows_version=${windows_version}"
+            echo "release_asset_name=Memoria-Vault-${release_version}-windows-x64.exe"
+            echo "release_exe=dist/installers/Memoria-Vault-${release_version}-windows-x64.exe"
+            echo "prerelease=${prerelease}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Ensure WiX Toolset is installed
+        shell: powershell
+        run: |
+          $wixPath = "C:\Program Files (x86)\WiX Toolset v3.11\bin"
+          if (-not (Test-Path $wixPath)) {
+              Write-Host "WiX Toolset not found. Installing via Chocolatey..."
+              choco install wixtoolset --no-progress -y
+              $wixPath = "C:\Program Files (x86)\WiX Toolset v3.11\bin"
+          }
+          if (Test-Path $wixPath) {
+              echo "WIX_PATH=$wixPath" >> $env:GITHUB_ENV
+          } else {
+              Write-Error "Failed to locate or install WiX Toolset."
+              exit 1
+          }
+
+      - name: Run Windows packaging script
+        shell: powershell
+        run: |
+          # Executes your PowerShell script to download FFmpeg, build Maven, and prepare jpackage-input
+          powershell -NoProfile -ExecutionPolicy Bypass -File packaging/windows/scripts/package-windows.ps1 -Version "${{ steps.version.outputs.release_version }}"
+
+      - name: Verify Dynamic Staging and Runtime Isolation
+        shell: powershell
+        run: |
+          # Confirms FFmpeg path resolution relies strictly on local packaged layout structure
+          $ffmpegTarget = "dist/jpackage-input/ffmpeg.exe"
+          if (-not (Test-Path $ffmpegTarget)) {
+              # Fallback to subdirectory check depending on how your package-windows.ps1 structure organizes components
+              $ffmpegTarget = Get-ChildItem -Path "dist/jpackage-input" -Filter "ffmpeg.exe" -Recurse | Select-Object -First 1
+          }
+
+          if (-not $ffmpegTarget) {
+              Write-Error "Runtime validation failed: FFmpeg binary missing from staged jpackage input. Packaged app layout broken."
+              exit 1
+          }
+          Write-Host "Dynamic staging verified: FFmpeg is safely embedded inside application bundle space."
+
+      - name: Build Windows Executable via jpackage
+        shell: powershell
+        run: |
+          # Inject verified WiX Toolset binary path into current session environment
+          $env:Path += ";${{ env.WIX_PATH }}"
+
+          # Locate the built JAR file inside the staged jpackage-input folder
+          $jarFile = Get-ChildItem -Path "dist/jpackage-input" -Filter "*.jar" | Select-Object -First 1
+          if (-not $jarFile) {
+              Write-Error "No JAR file found in dist/jpackage-input. Compilation might have failed."
+              exit 1
+          }
+
+          # Run jpackage with fixed Windows app version and native desktop JarLauncher
+          jpackage --type exe `
+                   --dest "dist/installers" `
+                   --name "Memoria Vault" `
+                   --app-version "${{ steps.version.outputs.windows_version }}" `
+                   --vendor "cnoupoue" `
+                   --input "dist/jpackage-input" `
+                   --main-jar $jarFile.Name `
+                   --main-class "org.springframework.boot.loader.launch.JarLauncher" `
+                   --icon "packaging/windows/icon/MemoriaVault.ico" `
+                   --win-shortcut `
+                   --win-menu `
+                   --jlink-options "--strip-debug --no-man-pages --no-header-files --compress zip-6" `
+                   --verbose
+
+      - name: Generate checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          generated_output="dist/installers/Memoria Vault-${{ steps.version.outputs.windows_version }}.exe"
+
+          # Rename the installer to match the consistent clean release asset name pattern
+          mv "${generated_output}" "${{ steps.version.outputs.release_exe }}"
+
+          # Navigate to target folder so the filename inside the checksum file stays relative
+          cd dist/installers
+          target_file="Memoria-Vault-${{ steps.version.outputs.release_version }}-windows-x64.exe"
+
+          # Standard syntax including the installer filename for easy automated verification
+          sha256sum "${target_file}" > "${target_file}.sha256"
+
+      - name: Write release notes introduction
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.release_version }}"
+          cat > release-notes-intro.md <<EOF
+          ## Memoria Vault for Windows (x64)
+
+          Memoria Vault runs locally on your PC. Your compatible exported memories are not uploaded to a cloud service.
+
+          This application is an independent, open-source local tool and is not affiliated, associated, authorized, endorsed by, or in any way officially connected with Snap Inc. or Snapchat.
+
+          > ⚠️ **Note on Windows SmartScreen:** This installer is currently unsigned. When launching the installation for the first time, Windows SmartScreen may display a warning dialog. You can safely bypass this by clicking **"More info"** and choosing **"Run anyway"**.
+
+          ### Installation
+
+          1. Download \`Memoria-Vault-${version}-windows-x64.exe\`.
+          2. Run the installer to add Memoria Vault to your system.
+          3. Open Memoria Vault from the Start Menu or desktop shortcut.
+          4. Choose your exported archive folder and start a local scan.
+
+          ### Requirements
+
+          - Windows 10 / 11 (64-bit)
+          - A compatible exported memories archive folder
+
+          ### Release integrity
+
+          - The SHA-256 checksum is generated immediately after packaging.
+
+          EOF
+
+      - name: Publish GitHub Release assets
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
+          RELEASE_EXE: ${{ steps.version.outputs.release_exe }}
+        run: |
+          set -euo pipefail
+          checksum="${RELEASE_EXE}.sha256"
+          test -f "${RELEASE_EXE}"
+          test -f "${checksum}"
+
+          prerelease_flag=""
+          if [ "${PRERELEASE}" = "true" ]; then
+            prerelease_flag="--prerelease"
+          fi
+
+          # Avoid --notes-file and --generate-notes conflicts by appending automated changelogs directly
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" "${RELEASE_EXE}" "${checksum}" --clobber
+          else
+            # Append dynamic commit logs directly into the static notes layout
+            echo -e "\n### Changelog\n" >> release-notes-intro.md
+            gh api repos/{owner}/{repo}/releases/generate-notes \
+              -F tag_name="${GITHUB_REF_NAME}" --jq .body >> release-notes-intro.md || true
+
+            gh release create "${GITHUB_REF_NAME}" \
+              "${RELEASE_EXE}" \
+              "${checksum}" \
+              --title "Memoria Vault ${GITHUB_REF_NAME}" \
+              --notes-file release-notes-intro.md \
+              ${prerelease_flag}
+          fi
