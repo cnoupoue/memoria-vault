@@ -1,5 +1,8 @@
 package be.cnoupoue.memoriavault.thumbnail;
 
+/*
+merge
+ */
 import be.cnoupoue.memoriavault.ffmpeg.FfmpegPathResolver;
 import be.cnoupoue.memoriavault.ffmpeg.FfmpegResolution;
 import be.cnoupoue.memoriavault.memory.SnapMemory;
