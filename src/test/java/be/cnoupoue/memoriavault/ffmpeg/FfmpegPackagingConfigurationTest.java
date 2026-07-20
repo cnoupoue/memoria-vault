@@ -49,9 +49,10 @@ class FfmpegPackagingConfigurationTest {
     assertThat(workflow).contains("--java-options \"-Dmemoriavault.browser.auto-open=false\"");
     assertThat(packagingScript)
         .contains("\"-Pproduction,windows-desktop\"")
-        .contains("$jpackageCommandTemplate = @'")
-        .contains("$jpackageCommand = $jpackageCommandTemplate -f")
-        .doesNotContain("`$APPDIR");
+        .contains("The release workflow now executes jpackage directly after this staging script.")
+        .doesNotContain("`$APPDIR")
+        .doesNotContain("$jpackageCommandTemplate")
+        .doesNotContain("jpackage --type exe");
     assertThat(packagingScript).contains("-Dmemoriavault.desktop=true");
     assertThat(packagingScript).contains("-Dmemoriavault.browser.auto-open=false");
     assertThat(packagingScript).contains("-Dmemoriavault.ffmpeg.path=$APPDIR\\ffmpeg\\ffmpeg.exe");

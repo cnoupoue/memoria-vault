@@ -107,10 +107,13 @@ if (-not (Test-Path $envFilePath)) {
 # 6. Structured Payload Summary for jpackage
 Write-Host ""
 Write-Host "=== READY FOR JPACKAGE EXECUTION ==="
-Write-Host "Execute the following command sequence to produce the installer:"
-$jpackageCommandTemplate = @'
-jpackage --type exe --dest "{0}\installers" --name "Memoria Vault" --app-version {1} --vendor "cnoupoue" --input "{2}" --main-jar "{3}" --main-class "org.springframework.boot.loader.launch.JarLauncher" --java-options "-Dmemoriavault.desktop=true" --java-options "-Dmemoriavault.browser.auto-open=false" --java-options '-Dmemoriavault.ffmpeg.path=$APPDIR\ffmpeg\ffmpeg.exe' --icon "packaging\windows\icon\MemoriaVault.ico" --win-shortcut --win-menu --jlink-options "--strip-debug --no-man-pages --no-header-files --compress zip-6" --verbose
-'@
-$jpackageCommand = $jpackageCommandTemplate -f $dist, $Version, $jpackageInput, $jarName
-Write-Host $jpackageCommand
+Write-Host "Staged jpackage input directory:"
+Write-Host $jpackageInput
+Write-Host "Staged main JAR:"
+Write-Host $jarName
+Write-Host 'The release workflow now executes jpackage directly after this staging script.'
+Write-Host 'Required Windows runtime options:'
+Write-Host '-Dmemoriavault.desktop=true'
+Write-Host '-Dmemoriavault.browser.auto-open=false'
+Write-Host '-Dmemoriavault.ffmpeg.path=$APPDIR\ffmpeg\ffmpeg.exe'
 Write-Host ""

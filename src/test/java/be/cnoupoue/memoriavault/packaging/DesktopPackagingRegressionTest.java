@@ -84,10 +84,10 @@ class DesktopPackagingRegressionTest {
     assertThat(windowsReadme).contains("WiX Toolset v3.x").doesNotContain("WiX Toolset v3.11");
     assertThat(packagingScript)
         .contains("\"-Pproduction,windows-desktop\"")
-        .contains("$jpackageCommandTemplate = @'")
-        .contains("'@")
-        .contains("$jpackageCommand = $jpackageCommandTemplate -f")
-        .doesNotContain("`$APPDIR");
+        .contains("The release workflow now executes jpackage directly after this staging script.")
+        .doesNotContain("`$APPDIR")
+        .doesNotContain("$jpackageCommandTemplate")
+        .doesNotContain("jpackage --type exe");
     assertThat(workflow).contains("--java-options \"-Dmemoriavault.desktop=true\"");
     assertThat(workflow).contains("--java-options \"-Dmemoriavault.browser.auto-open=false\"");
     assertThat(workflow)
