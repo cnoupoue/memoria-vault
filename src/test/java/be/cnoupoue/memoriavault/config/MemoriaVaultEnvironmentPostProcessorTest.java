@@ -4,11 +4,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.boot.SpringApplication;
+import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.StandardEnvironment;
-import org.springframework.test.context.support.TestPropertySourceUtils;
 
 class MemoriaVaultEnvironmentPostProcessorTest {
 
@@ -106,7 +107,14 @@ class MemoriaVaultEnvironmentPostProcessorTest {
 
   private StandardEnvironment environmentWith(String... properties) {
     StandardEnvironment environment = new StandardEnvironment();
-    TestPropertySourceUtils.addInlinedPropertiesToEnvironment(environment, properties);
+    var values = new LinkedHashMap<String, Object>();
+
+    for (String property : properties) {
+      int separator = property.indexOf('=');
+      values.put(property.substring(0, separator), property.substring(separator + 1));
+    }
+
+    environment.getPropertySources().addFirst(new MapPropertySource("testProperties", values));
     return environment;
   }
 }

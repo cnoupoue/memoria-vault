@@ -21,6 +21,7 @@ public class FfmpegPathResolver {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(FfmpegPathResolver.class);
   private static final String FFMPEG_BINARY = "ffmpeg";
+  private static final String WINDOWS_FFMPEG_BINARY = "ffmpeg.exe";
   private static final int VERSION_CHECK_TIMEOUT_SECONDS = 5;
 
   private final String configuredPath;
@@ -142,15 +143,28 @@ public class FfmpegPathResolver {
 
   private String systemFfmpegBinaryName() {
     if (!StringUtils.hasText(configuredPath)) {
-      return FFMPEG_BINARY;
+      return defaultFfmpegBinaryName();
     }
 
     Path configuredCandidate = Path.of(configuredPath.trim());
     if (configuredCandidate.isAbsolute() || configuredCandidate.getNameCount() != 1) {
-      return FFMPEG_BINARY;
+      return defaultFfmpegBinaryName();
     }
 
-    return configuredCandidate.toString();
+    String binaryName = configuredCandidate.toString();
+    if (isWindows() && FFMPEG_BINARY.equalsIgnoreCase(binaryName)) {
+      return WINDOWS_FFMPEG_BINARY;
+    }
+
+    return binaryName;
+  }
+
+  private String defaultFfmpegBinaryName() {
+    return isWindows() ? WINDOWS_FFMPEG_BINARY : FFMPEG_BINARY;
+  }
+
+  private boolean isWindows() {
+    return System.getProperty("os.name", "").toLowerCase().contains("win");
   }
 
   private Optional<Path> executableCandidate(Path candidate, FfmpegSource source) {

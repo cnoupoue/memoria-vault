@@ -202,18 +202,37 @@ class MemoryThumbnailServiceTest {
   }
 
   private Path writeFakeFfmpeg(Path path) throws Exception {
-    Files.writeString(
-        path,
-        "#!/bin/sh\n"
-            + "output=\"\"\n"
-            + "for arg in \"$@\"; do\n"
-            + "  output=\"$arg\"\n"
-            + "done\n"
-            + "printf 'fake thumbnail' > \"$output\"\n"
-            + "exit 0\n");
-    path.toFile().setExecutable(true);
+    Path fakeFfmpeg = isWindows() ? path.resolveSibling(path.getFileName() + ".cmd") : path;
+    Files.writeString(fakeFfmpeg, isWindows() ? windowsFakeFfmpeg() : unixFakeFfmpeg());
+    fakeFfmpeg.toFile().setExecutable(true);
 
-    return path.toAbsolutePath().normalize();
+    return fakeFfmpeg.toAbsolutePath().normalize();
+  }
+
+  private String unixFakeFfmpeg() {
+    return "#!/bin/sh\n"
+        + "output=\"\"\n"
+        + "for arg in \"$@\"; do\n"
+        + "  output=\"$arg\"\n"
+        + "done\n"
+        + "printf 'fake thumbnail' > \"$output\"\n"
+        + "exit 0\n";
+  }
+
+  private String windowsFakeFfmpeg() {
+    return """
+        @echo off
+        setlocal enabledelayedexpansion
+        set "output="
+        :args
+        if "%%~1"=="" goto done
+        set "output=%%~1"
+        shift
+        goto args
+        :done
+        > "!output!" echo fake thumbnail
+        exit /b 0
+        """;
   }
 
   private SnapMemory memory(
@@ -245,6 +264,10 @@ class MemoryThumbnailServiceTest {
         return resolution;
       }
     };
+  }
+
+  private boolean isWindows() {
+    return System.getProperty("os.name", "").toLowerCase().contains("win");
   }
 
   private static class FakeSecureMemoryPathResolver extends SecureMemoryPathResolver {

@@ -18,8 +18,7 @@ class FfmpegPathResolverTest {
     Path bundledFfmpeg = executable(temporaryDirectory.resolve("platform-bundle/bin/ffmpeg"));
 
     FfmpegResolution resolution =
-        new FfmpegPathResolver(configuredFfmpeg.toString(), () -> Optional.of(bundledFfmpeg), "")
-            .resolve();
+        resolver(configuredFfmpeg.toString(), () -> Optional.of(bundledFfmpeg), "").resolve();
 
     assertThat(resolution.available()).isTrue();
     assertThat(resolution.executablePath()).isEqualTo(configuredFfmpeg);
@@ -30,8 +29,7 @@ class FfmpegPathResolverTest {
   void bundledFfmpegIsUsedWhenConfiguredPathIsAbsent() throws Exception {
     Path bundledFfmpeg = executable(temporaryDirectory.resolve("platform-bundle/bin/ffmpeg"));
 
-    FfmpegResolution resolution =
-        new FfmpegPathResolver("", () -> Optional.of(bundledFfmpeg), "").resolve();
+    FfmpegResolution resolution = resolver("", () -> Optional.of(bundledFfmpeg), "").resolve();
 
     assertThat(resolution.available()).isTrue();
     assertThat(resolution.executablePath()).isEqualTo(bundledFfmpeg);
@@ -42,11 +40,10 @@ class FfmpegPathResolverTest {
   void bundledFfmpegIsUsedBeforeSystemPathFallback() throws Exception {
     Path bundledFfmpeg = executable(temporaryDirectory.resolve("platform-bundle/bin/ffmpeg"));
     Path binDirectory = Files.createDirectories(temporaryDirectory.resolve("bin"));
-    executable(binDirectory.resolve("ffmpeg"));
+    executable(binDirectory.resolve(systemFfmpegBinaryName()));
 
     FfmpegResolution resolution =
-        new FfmpegPathResolver("", () -> Optional.of(bundledFfmpeg), binDirectory.toString())
-            .resolve();
+        resolver("", () -> Optional.of(bundledFfmpeg), binDirectory.toString()).resolve();
 
     assertThat(resolution.available()).isTrue();
     assertThat(resolution.executablePath()).isEqualTo(bundledFfmpeg);
@@ -58,7 +55,7 @@ class FfmpegPathResolverTest {
     Path bundledFfmpeg = executable(temporaryDirectory.resolve("platform-bundle/bin/ffmpeg"));
 
     FfmpegResolution resolution =
-        new FfmpegPathResolver("ffmpeg", () -> Optional.of(bundledFfmpeg), "").resolve();
+        resolver("ffmpeg", () -> Optional.of(bundledFfmpeg), "").resolve();
 
     assertThat(resolution.available()).isTrue();
     assertThat(resolution.executablePath()).isEqualTo(bundledFfmpeg);
@@ -68,10 +65,9 @@ class FfmpegPathResolverTest {
   @Test
   void systemPathFfmpegIsUsedWhenBundledFfmpegIsAbsent() throws Exception {
     Path binDirectory = Files.createDirectories(temporaryDirectory.resolve("bin"));
-    Path systemFfmpeg = executable(binDirectory.resolve("ffmpeg"));
+    Path systemFfmpeg = executable(binDirectory.resolve(systemFfmpegBinaryName()));
 
-    FfmpegResolution resolution =
-        new FfmpegPathResolver("", Optional::empty, binDirectory.toString()).resolve();
+    FfmpegResolution resolution = resolver("", Optional::empty, binDirectory.toString()).resolve();
 
     assertThat(resolution.available()).isTrue();
     assertThat(resolution.executablePath()).isEqualTo(systemFfmpeg);
@@ -82,10 +78,10 @@ class FfmpegPathResolverTest {
   @Test
   void plainFfmpegConfigurationCanBeUsedAsSystemFallback() throws Exception {
     Path binDirectory = Files.createDirectories(temporaryDirectory.resolve("bin"));
-    Path systemFfmpeg = executable(binDirectory.resolve("ffmpeg"));
+    Path systemFfmpeg = executable(binDirectory.resolve(systemFfmpegBinaryName()));
 
     FfmpegResolution resolution =
-        new FfmpegPathResolver("ffmpeg", Optional::empty, binDirectory.toString()).resolve();
+        resolver("ffmpeg", Optional::empty, binDirectory.toString()).resolve();
 
     assertThat(resolution.available()).isTrue();
     assertThat(resolution.executablePath()).isEqualTo(systemFfmpeg);
@@ -111,7 +107,7 @@ class FfmpegPathResolverTest {
   void bundledFfmpegThatFailsVersionValidationFallsBackToSystemPath() throws Exception {
     Path bundledFfmpeg = executable(temporaryDirectory.resolve("platform-bundle/bin/ffmpeg"));
     Path binDirectory = Files.createDirectories(temporaryDirectory.resolve("bin"));
-    Path systemFfmpeg = executable(binDirectory.resolve("ffmpeg"));
+    Path systemFfmpeg = executable(binDirectory.resolve(systemFfmpegBinaryName()));
 
     FfmpegResolution resolution =
         new FfmpegPathResolver(
@@ -150,7 +146,7 @@ class FfmpegPathResolverTest {
 
   private Path executable(Path path) throws Exception {
     Files.createDirectories(path.getParent());
-    Files.writeString(path, "#!/bin/sh\nexit 0\n");
+    Files.writeString(path, "test executable\n");
     path.toFile().setExecutable(true);
     return path.toAbsolutePath().normalize();
   }
@@ -160,5 +156,19 @@ class FfmpegPathResolverTest {
     Files.writeString(path, "#!/bin/sh\nexit 0\n");
     path.toFile().setExecutable(false);
     return path.toAbsolutePath().normalize();
+  }
+
+  private FfmpegPathResolver resolver(
+      String configuredPath,
+      java.util.function.Supplier<Optional<Path>> bundledFfmpegPathSupplier,
+      String pathEnvironment) {
+    return new FfmpegPathResolver(
+        configuredPath, bundledFfmpegPathSupplier, pathEnvironment, candidate -> true);
+  }
+
+  private String systemFfmpegBinaryName() {
+    return System.getProperty("os.name", "").toLowerCase().contains("win")
+        ? "ffmpeg.exe"
+        : "ffmpeg";
   }
 }
