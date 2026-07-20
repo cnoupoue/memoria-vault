@@ -4,6 +4,7 @@ param (
 )
 
 Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
 
 function Invoke-MavenWithRetry {
     param (
@@ -32,6 +33,67 @@ function Invoke-MavenWithRetry {
         Start-Sleep -Seconds $delaySeconds
         $delaySeconds = $delaySeconds * 2
     }
+}
+
+function Find-InstalledFfmpeg {
+    $candidateRoots = @(
+        "${env:ChocolateyInstall}\lib\ffmpeg\tools",
+        "C:\ProgramData\chocolatey\lib\ffmpeg\tools",
+        "C:\tools"
+    )
+
+    foreach ($candidateRoot in $candidateRoots) {
+        if ([string]::IsNullOrWhiteSpace($candidateRoot) -or -not (Test-Path $candidateRoot)) {
+            continue
+        }
+
+        $matches = Get-ChildItem -Path $candidateRoot -Filter 'ffmpeg.exe' -Recurse -ErrorAction SilentlyContinue
+        foreach ($match in $matches) {
+            if (Test-Path $match.FullName) {
+                return $match.FullName
+            }
+        }
+    }
+
+    $command = Get-Command ffmpeg.exe -ErrorAction SilentlyContinue
+    if ($command) {
+        return $command.Source
+    }
+
+    return $null
+}
+
+function Install-FfmpegWithChocolatey {
+    if (-not (Get-Command choco.exe -ErrorAction SilentlyContinue)) {
+        throw "FFmpeg download failed and Chocolatey is not available for fallback installation."
+    }
+
+    Write-Host "Installing FFmpeg via Chocolatey fallback..."
+    choco install ffmpeg --no-progress -y
+    if ($LASTEXITCODE -ne 0) {
+        throw "Chocolatey failed to install FFmpeg."
+    }
+
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+    return Find-InstalledFfmpeg
+}
+
+function Stage-FfmpegFromInstalledLocation {
+    param (
+        [string]$Destination
+    )
+
+    $installedFfmpeg = Find-InstalledFfmpeg
+    if (-not $installedFfmpeg) {
+        $installedFfmpeg = Install-FfmpegWithChocolatey
+    }
+
+    if (-not $installedFfmpeg -or -not (Test-Path $installedFfmpeg)) {
+        throw "Could not locate FFmpeg after Chocolatey fallback installation."
+    }
+
+    Copy-Item $installedFfmpeg $Destination -Force
+    Write-Host "FFmpeg staged from installed location: $installedFfmpeg"
 }
 
 # Validate supported architecture early
@@ -67,32 +129,42 @@ if (-not (Test-Path $ffmpegDest)) {
     $expectedHash = "6ED8BCC0B426AB5B6AA36D2CB187E6924D5B1FE26B33D4F5A170F429BAFF89B5"
     $zipPath = Join-Path $ffmpegDir 'ffmpeg.zip'
 
-    Write-Host "Downloading pinned FFmpeg archive from $ffmpegUrl ..."
-    Invoke-WebRequest -Uri $ffmpegUrl -OutFile $zipPath
-
-    Write-Host "Verifying SHA-256 checksum..."
-    $actualHash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash
-    if ($actualHash -ne $expectedHash) {
-        Remove-Item $zipPath -Force
-        throw "Cryptographic verification failed! Expected hash: $expectedHash, but got: $actualHash"
-    }
-    Write-Host "FFmpeg archive integrity verified."
-
-    Write-Host "Extracting binaries..."
     $tempExtractDir = Join-Path $ffmpegDir 'temp_extract'
-    Expand-Archive -Path $zipPath -DestinationPath $tempExtractDir -Force
+    try {
+        Write-Host "Downloading pinned FFmpeg archive from $ffmpegUrl ..."
+        Invoke-WebRequest -Uri $ffmpegUrl -OutFile $zipPath -UseBasicParsing -ErrorAction Stop
 
-    $extractedExe = Get-ChildItem -Path $tempExtractDir -Filter 'ffmpeg.exe' -Recurse | Select-Object -First 1
-    if ($extractedExe) {
-        Move-Item $extractedExe.FullName -Destination $ffmpegDest -Force
-        Write-Host "FFmpeg successfully isolated to $ffmpegDest"
-    } else {
-        throw "Fatal: Could not locate ffmpeg.exe within the downloaded archive payload."
+        if (-not (Test-Path $zipPath)) {
+            throw "FFmpeg archive download did not create $zipPath."
+        }
+
+        Write-Host "Verifying SHA-256 checksum..."
+        $actualHash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash
+        if ($actualHash -ne $expectedHash) {
+            throw "Cryptographic verification failed! Expected hash: $expectedHash, but got: $actualHash"
+        }
+        Write-Host "FFmpeg archive integrity verified."
+
+        Write-Host "Extracting binaries..."
+        Expand-Archive -Path $zipPath -DestinationPath $tempExtractDir -Force
+
+        $extractedExe = Get-ChildItem -Path $tempExtractDir -Filter 'ffmpeg.exe' -Recurse | Select-Object -First 1
+        if ($extractedExe) {
+            Move-Item $extractedExe.FullName -Destination $ffmpegDest -Force
+            Write-Host "FFmpeg successfully isolated to $ffmpegDest"
+        } else {
+            throw "Fatal: Could not locate ffmpeg.exe within the downloaded archive payload."
+        }
+    } catch {
+        Write-Warning "Pinned FFmpeg download path failed: $($_.Exception.Message)"
+        Write-Warning "Falling back to Chocolatey-managed FFmpeg."
+        Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+        Remove-Item -Recurse -Force $tempExtractDir -ErrorAction SilentlyContinue
+        Stage-FfmpegFromInstalledLocation -Destination $ffmpegDest
+    } finally {
+        Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+        Remove-Item -Recurse -Force $tempExtractDir -ErrorAction SilentlyContinue
     }
-
-    # Clean up installation footprints
-    Remove-Item $zipPath -Force
-    Remove-Item -Recurse -Force $tempExtractDir -ErrorAction SilentlyContinue
 }
 
 # 2. Executing Clean Maven Package

@@ -48,7 +48,10 @@ class FfmpegPackagingConfigurationTest {
     assertThat(workflow).contains("--java-options \"-Dmemoriavault.desktop=true\"");
     assertThat(workflow).contains("--java-options \"-Dmemoriavault.browser.auto-open=false\"");
     assertThat(packagingScript)
+        .contains("$ErrorActionPreference = \"Stop\"")
         .contains("function Invoke-MavenWithRetry")
+        .contains("function Install-FfmpegWithChocolatey")
+        .contains("Falling back to Chocolatey-managed FFmpeg.")
         .contains(
             "Invoke-MavenWithRetry -MavenArguments @(\"clean\", \"package\", \"-Pproduction,windows-desktop\", \"-DskipTests\")")
         .contains("\"-Pproduction,windows-desktop\"")

@@ -88,7 +88,14 @@ class DesktopPackagingRegressionTest {
     assertThat(workflow).doesNotContain("WiX Toolset v3.11\\bin");
     assertThat(windowsReadme).contains("WiX Toolset v3.x").doesNotContain("WiX Toolset v3.11");
     assertThat(packagingScript)
+        .contains("$ErrorActionPreference = \"Stop\"")
         .contains("function Invoke-MavenWithRetry")
+        .contains("function Find-InstalledFfmpeg")
+        .contains("function Install-FfmpegWithChocolatey")
+        .contains("function Stage-FfmpegFromInstalledLocation")
+        .contains(
+            "Invoke-WebRequest -Uri $ffmpegUrl -OutFile $zipPath -UseBasicParsing -ErrorAction Stop")
+        .contains("Falling back to Chocolatey-managed FFmpeg.")
         .contains(
             "Invoke-MavenWithRetry -MavenArguments @(\"-q\", \"-DforceStdout\", \"help:evaluate\", \"-Dexpression=project.version\")")
         .contains(
