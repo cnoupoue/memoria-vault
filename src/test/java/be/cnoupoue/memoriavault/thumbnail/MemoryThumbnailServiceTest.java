@@ -14,12 +14,17 @@ import be.cnoupoue.memoriavault.streaming.SecureMemoryPathResolver;
 import java.awt.Color;
 import java.awt.Graphics2D;
 import java.awt.image.BufferedImage;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import javax.imageio.ImageIO;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -124,19 +129,28 @@ class MemoryThumbnailServiceTest {
   @Test
   void videoThumbnailGenerationUsesResolvedFfmpegExecutable() throws Exception {
     Path sourceVideo = Files.writeString(temporaryDirectory.resolve("main.mp4"), "video");
-    Path fakeFfmpeg = writeFakeFfmpeg(temporaryDirectory.resolve("ffmpeg"));
+    Path fakeFfmpeg = temporaryDirectory.resolve(isWindows() ? "ffmpeg.exe" : "ffmpeg");
+    Files.writeString(fakeFfmpeg, "fake ffmpeg");
     Path thumbnailDirectory = temporaryDirectory.resolve("thumbs");
     SnapMemory memory = memory("memory-video", SnapMemoryType.VIDEO, sourceVideo.toString(), null);
     FakeSecureMemoryPathResolver secureMemoryPathResolver = new FakeSecureMemoryPathResolver();
+    AtomicReference<List<String>> launchedCommand = new AtomicReference<>();
     MemoryThumbnailService service =
-        service(
-            thumbnailDirectory,
-            480,
-            480,
+        new MemoryThumbnailService(
+            snapMemoryRepository,
             secureMemoryPathResolver,
             resolver(
                 FfmpegResolution.available(
-                    fakeFfmpeg, FfmpegSource.CONFIGURED, "Using configured FFmpeg.")));
+                    fakeFfmpeg, FfmpegSource.CONFIGURED, "Using configured FFmpeg.")),
+            thumbnailDirectory.toString(),
+            480,
+            480,
+            1,
+            command -> {
+              launchedCommand.set(command);
+              Files.writeString(Path.of(command.get(command.size() - 1)), "fake thumbnail");
+              return new CompletedProcess(0);
+            });
 
     when(snapMemoryRepository.findById(memory.getId())).thenReturn(Optional.of(memory));
     secureMemoryPathResolver.register(memory.getSourceId(), memory.getMainPath(), sourceVideo);
@@ -144,6 +158,8 @@ class MemoryThumbnailServiceTest {
     var thumbnail = service.getThumbnail(memory.getId());
 
     assertThat(thumbnail.getFile()).exists();
+    assertThat(launchedCommand.get()).isNotNull();
+    assertThat(launchedCommand.get().get(0)).isEqualTo(fakeFfmpeg.toString());
   }
 
   @Test
@@ -201,21 +217,6 @@ class MemoryThumbnailServiceTest {
     return path;
   }
 
-  private Path writeFakeFfmpeg(Path path) throws Exception {
-    Files.writeString(
-        path,
-        "#!/bin/sh\n"
-            + "output=\"\"\n"
-            + "for arg in \"$@\"; do\n"
-            + "  output=\"$arg\"\n"
-            + "done\n"
-            + "printf 'fake thumbnail' > \"$output\"\n"
-            + "exit 0\n");
-    path.toFile().setExecutable(true);
-
-    return path.toAbsolutePath().normalize();
-  }
-
   private SnapMemory memory(
       String id, SnapMemoryType mediaType, String mainPath, String overlayPath) {
     String now = Instant.now().toString();
@@ -245,6 +246,52 @@ class MemoryThumbnailServiceTest {
         return resolution;
       }
     };
+  }
+
+  private boolean isWindows() {
+    return System.getProperty("os.name", "").toLowerCase().contains("win");
+  }
+
+  private static class CompletedProcess extends Process {
+
+    private final int exitCode;
+
+    private CompletedProcess(int exitCode) {
+      this.exitCode = exitCode;
+    }
+
+    @Override
+    public OutputStream getOutputStream() {
+      return OutputStream.nullOutputStream();
+    }
+
+    @Override
+    public InputStream getInputStream() {
+      return InputStream.nullInputStream();
+    }
+
+    @Override
+    public InputStream getErrorStream() {
+      return InputStream.nullInputStream();
+    }
+
+    @Override
+    public int waitFor() {
+      return exitCode;
+    }
+
+    @Override
+    public boolean waitFor(long timeout, TimeUnit unit) {
+      return true;
+    }
+
+    @Override
+    public int exitValue() {
+      return exitCode;
+    }
+
+    @Override
+    public void destroy() {}
   }
 
   private static class FakeSecureMemoryPathResolver extends SecureMemoryPathResolver {

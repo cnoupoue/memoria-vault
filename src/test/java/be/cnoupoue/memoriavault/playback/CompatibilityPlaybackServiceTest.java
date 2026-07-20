@@ -129,10 +129,20 @@ class CompatibilityPlaybackServiceTest {
   }
 
   private Path fakeFfmpeg(int exitCode) throws Exception {
-    Path fakeFfmpeg = temporaryDirectory.resolve("ffmpeg");
-    Files.writeString(
-        fakeFfmpeg,
-        """
+    Path fakeFfmpeg = temporaryDirectory.resolve(isWindows() ? "ffmpeg.cmd" : "ffmpeg");
+    String commandLog = temporaryDirectory.resolve("ffmpeg-command.txt").toString();
+    String script =
+        isWindows()
+            ? windowsFakeFfmpeg(commandLog, exitCode)
+            : unixFakeFfmpeg(commandLog, exitCode);
+    Files.writeString(fakeFfmpeg, script);
+    fakeFfmpeg.toFile().setExecutable(true);
+
+    return fakeFfmpeg;
+  }
+
+  private String unixFakeFfmpeg(String commandLog, int exitCode) {
+    return """
         #!/bin/sh
         printf '%%s ' "$@" > "%s"
         if [ "%d" -eq 0 ]; then
@@ -141,10 +151,28 @@ class CompatibilityPlaybackServiceTest {
         fi
         exit %d
         """
-            .formatted(temporaryDirectory.resolve("ffmpeg-command.txt"), exitCode, exitCode));
-    fakeFfmpeg.toFile().setExecutable(true);
+        .formatted(commandLog, exitCode, exitCode);
+  }
 
-    return fakeFfmpeg;
+  private String windowsFakeFfmpeg(String commandLog, int exitCode) {
+    return """
+        @echo off
+        setlocal enabledelayedexpansion
+        break > "%s"
+        set "out="
+        :args
+        if "%%~1"=="" goto done
+        <nul set /p="%%~1 " >> "%s"
+        set "out=%%~1"
+        shift
+        goto args
+        :done
+        if "%d"=="0" (
+          > "!out!" echo converted
+        )
+        exit /b %d
+        """
+        .formatted(commandLog, commandLog, exitCode, exitCode);
   }
 
   private FfmpegEncoderCapabilities availableCapabilities() {
@@ -224,5 +252,9 @@ class CompatibilityPlaybackServiceTest {
     public FfmpegEncoderCapabilities getCapabilities() {
       return capabilities;
     }
+  }
+
+  private boolean isWindows() {
+    return System.getProperty("os.name", "").toLowerCase().contains("win");
   }
 }

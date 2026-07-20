@@ -56,6 +56,7 @@ class MemorySourceAvailabilityApiTests {
     Path unreadable = temporaryDirectory.resolve("unreadable");
 
     if (Files.exists(unreadable)) {
+      Assumptions.assumeTrue(Files.getFileStore(unreadable).supportsFileAttributeView("posix"));
       Files.setPosixFilePermissions(unreadable, PosixFilePermissions.fromString("rwx------"));
     }
   }
@@ -101,6 +102,9 @@ class MemorySourceAvailabilityApiTests {
 
   @Test
   void reportsUnreadableSourceFolder() throws Exception {
+    Assumptions.assumeTrue(
+        Files.getFileStore(temporaryDirectory).supportsFileAttributeView("posix"));
+
     Path unreadable = Files.createDirectory(temporaryDirectory.resolve("unreadable"));
     Files.setPosixFilePermissions(unreadable, PosixFilePermissions.fromString("---------"));
 

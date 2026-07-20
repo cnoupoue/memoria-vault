@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.imageio.ImageIO;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.HttpStatus;
@@ -35,9 +36,11 @@ public class MemoryThumbnailService {
   private final int maxWidth;
   private final int maxHeight;
   private final int videoSeekSeconds;
+  private final FfmpegProcessLauncher ffmpegProcessLauncher;
 
   private final Map<String, Object> thumbnailLocks = new ConcurrentHashMap<>();
 
+  @Autowired
   public MemoryThumbnailService(
       SnapMemoryRepository snapMemoryRepository,
       SecureMemoryPathResolver secureMemoryPathResolver,
@@ -46,6 +49,26 @@ public class MemoryThumbnailService {
       @Value("${memoriavault.thumbnail.max-width}") int maxWidth,
       @Value("${memoriavault.thumbnail.max-height}") int maxHeight,
       @Value("${memoriavault.thumbnail.video-seek-seconds:1}") int videoSeekSeconds) {
+    this(
+        snapMemoryRepository,
+        secureMemoryPathResolver,
+        ffmpegPathResolver,
+        thumbnailDirectory,
+        maxWidth,
+        maxHeight,
+        videoSeekSeconds,
+        command -> new ProcessBuilder(command).redirectErrorStream(true).start());
+  }
+
+  MemoryThumbnailService(
+      SnapMemoryRepository snapMemoryRepository,
+      SecureMemoryPathResolver secureMemoryPathResolver,
+      FfmpegPathResolver ffmpegPathResolver,
+      String thumbnailDirectory,
+      int maxWidth,
+      int maxHeight,
+      int videoSeekSeconds,
+      FfmpegProcessLauncher ffmpegProcessLauncher) {
     this.snapMemoryRepository = snapMemoryRepository;
     this.secureMemoryPathResolver = secureMemoryPathResolver;
     this.ffmpegPathResolver = ffmpegPathResolver;
@@ -53,6 +76,7 @@ public class MemoryThumbnailService {
     this.maxWidth = maxWidth;
     this.maxHeight = maxHeight;
     this.videoSeekSeconds = videoSeekSeconds;
+    this.ffmpegProcessLauncher = ffmpegProcessLauncher;
   }
 
   public FileSystemResource getThumbnail(String memoryId) {
@@ -158,7 +182,7 @@ public class MemoryThumbnailService {
     Process process;
 
     try {
-      process = new ProcessBuilder(command).redirectErrorStream(true).start();
+      process = ffmpegProcessLauncher.start(command);
     } catch (IOException exception) {
       throw new VideoThumbnailUnavailableException();
     }
@@ -268,5 +292,10 @@ public class MemoryThumbnailService {
   private Path resolveSecureMediaPath(
       String sourceId, String storedMediaPath, String unavailableMessage) {
     return secureMemoryPathResolver.resolve(sourceId, storedMediaPath, unavailableMessage);
+  }
+
+  @FunctionalInterface
+  interface FfmpegProcessLauncher {
+    Process start(List<String> command) throws IOException;
   }
 }
