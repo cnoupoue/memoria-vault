@@ -72,6 +72,8 @@ class DesktopPackagingRegressionTest {
     String packagingScript =
         Files.readString(Path.of("packaging/windows/scripts/package-windows.ps1"));
 
+    assertThat(workflow).contains("npm --prefix frontend test");
+    assertThat(workflow).doesNotContain("--watchAll");
     assertThat(packagingScript).contains("-Pproduction,windows-desktop");
     assertThat(workflow).contains("--java-options \"-Dmemoriavault.desktop=true\"");
     assertThat(workflow).contains("--java-options \"-Dmemoriavault.browser.auto-open=false\"");
@@ -80,6 +82,32 @@ class DesktopPackagingRegressionTest {
     assertThat(packagingScript).contains("-Dmemoriavault.desktop=true");
     assertThat(packagingScript).contains("-Dmemoriavault.browser.auto-open=false");
     assertThat(packagingScript).contains("-Dmemoriavault.ffmpeg.path=`$APPDIR\\ffmpeg\\ffmpeg.exe");
+  }
+
+  @Test
+  void releaseWorkflowsSupportPlatformPrefixedAndSharedTags() throws Exception {
+    String macosWorkflow = Files.readString(Path.of(".github/workflows/release-macos-arm64.yml"));
+    String windowsWorkflow = Files.readString(Path.of(".github/workflows/release-windows.yml"));
+    String qualityWorkflow = Files.readString(Path.of(".github/workflows/quality-checks.yml"));
+
+    assertThat(macosWorkflow)
+        .contains("- \"v*.*.*\"")
+        .contains("- \"mac-v*.*.*\"")
+        .contains("release_tag=\"${tag#mac-}\"")
+        .contains("release_version=\"${release_tag#v}\"")
+        .doesNotContain("- \"win-v*.*.*\"");
+
+    assertThat(windowsWorkflow)
+        .contains("- \"v*.*.*\"")
+        .contains("- \"win-v*.*.*\"")
+        .contains("release_tag=\"${tag#win-}\"")
+        .contains("release_version=\"${release_tag#v}\"")
+        .doesNotContain("- \"mac-v*.*.*\"");
+
+    assertThat(qualityWorkflow)
+        .contains("- \"v*.*.*\"")
+        .contains("- \"mac-v*.*.*\"")
+        .contains("- \"win-v*.*.*\"");
   }
 
   private String makeTarget(String makefile, String targetName) {

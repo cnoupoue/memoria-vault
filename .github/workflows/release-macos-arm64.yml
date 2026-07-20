@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*.*.*"
+      - "mac-v*.*.*"
 
 permissions:
   contents: write
@@ -66,12 +67,13 @@ jobs:
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME}"
-          if ! printf '%s\n' "${tag}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$'; then
-            echo "::error::Release tags must use semantic version format such as v0.1.0 or v0.1.0-beta.1."
+          release_tag="${tag#mac-}"
+          if ! printf '%s\n' "${release_tag}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z][0-9A-Za-z.-]*)?$'; then
+            echo "::error::Release tags must use semantic version format such as v0.1.0, v0.1.0-beta.1, mac-v0.1.0, or mac-v0.1.0-beta.1."
             exit 1
           fi
 
-          release_version="${tag#v}"
+          release_version="${release_tag#v}"
           base_version="${release_version%%-*}"
           maven_version="$(./mvnw -q -DforceStdout help:evaluate -Dexpression=project.version)"
 

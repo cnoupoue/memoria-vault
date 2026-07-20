@@ -7,6 +7,8 @@ on:
       - main
     tags-ignore:
       - "v*.*.*"
+      - "mac-v*.*.*"
+      - "win-v*.*.*"
 
 permissions:
   contents: read
