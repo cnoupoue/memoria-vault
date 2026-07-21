@@ -236,6 +236,7 @@ package-macos-app: build-production clean-macos-app-output prepare-bundled-ffmpe
 		--input "$(JPACKAGE_INPUT_DIR)" \
 		--main-jar "$$(basename "$(JAR_PATH)")" \
 		--main-class "org.springframework.boot.loader.launch.JarLauncher" \
+		--java-options '-Djava.awt.headless=false' \
 		--java-options '-Dmemoriavault.ffmpeg.path=$$APPDIR/$(BUNDLED_FFMPEG_APP_DIR)/ffmpeg' \
 		--arguments "$(SPRING_ARGS)" \
 		--icon "$(MACOS_ICON)" \

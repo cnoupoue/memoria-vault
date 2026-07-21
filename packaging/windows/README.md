@@ -65,6 +65,7 @@ jpackage --type exe `
          --input "dist/jpackage-input" `
          --main-jar "memoria-vault-0.1.2.jar" `
          --main-class "org.springframework.boot.loader.launch.JarLauncher" `
+         --java-options "-Djava.awt.headless=false" `
          --java-options "-Dmemoriavault.desktop=true" `
          --java-options "-Dmemoriavault.browser.auto-open=false" `
          --java-options '-Dmemoriavault.ffmpeg.path=$APPDIR\ffmpeg\ffmpeg.exe' `

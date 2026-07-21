@@ -15,6 +15,7 @@ class FfmpegPackagingConfigurationTest {
     assertThat(makefile)
         .contains(
             "--java-options '-Dmemoriavault.ffmpeg.path=$$APPDIR/$(BUNDLED_FFMPEG_APP_DIR)/ffmpeg'");
+    assertThat(makefile).contains("--java-options '-Djava.awt.headless=false'");
     assertThat(makefile)
         .contains("--main-class \"org.springframework.boot.loader.launch.JarLauncher\"");
     assertThat(makefile).contains("./mvnw clean -P$(SPRING_PROFILE) -DskipTests package");
@@ -45,6 +46,7 @@ class FfmpegPackagingConfigurationTest {
 
     assertThat(workflow)
         .contains("--java-options '-Dmemoriavault.ffmpeg.path=$APPDIR\\ffmpeg\\ffmpeg.exe'");
+    assertThat(workflow).contains("--java-options \"-Djava.awt.headless=false\"");
     assertThat(workflow).contains("--java-options \"-Dmemoriavault.desktop=true\"");
     assertThat(workflow).contains("--java-options \"-Dmemoriavault.browser.auto-open=false\"");
     assertThat(packagingScript)
@@ -63,6 +65,7 @@ class FfmpegPackagingConfigurationTest {
         .doesNotContain("gyan.dev")
         .doesNotContain("Invoke-WebRequest");
     assertThat(packagingScript).contains("-Dmemoriavault.desktop=true");
+    assertThat(packagingScript).contains("-Djava.awt.headless=false");
     assertThat(packagingScript).contains("-Dmemoriavault.browser.auto-open=false");
     assertThat(packagingScript).contains("-Dmemoriavault.ffmpeg.path=$APPDIR\\ffmpeg\\ffmpeg.exe");
   }

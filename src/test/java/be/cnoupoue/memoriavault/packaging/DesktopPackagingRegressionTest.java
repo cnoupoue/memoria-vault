@@ -21,6 +21,9 @@ class DesktopPackagingRegressionTest {
     String makefile = Files.readString(Path.of("Makefile"));
     String buildProductionTarget = makeTarget(makefile, "build-production");
     String macosPackageTarget = makeTarget(makefile, "package-macos-app");
+    String mainApplication =
+        Files.readString(
+            Path.of("src/main/java/be/cnoupoue/memoriavault/MemoriaVaultApplication.java"));
     String productionProperties =
         Files.readString(Path.of("src/main/resources/application-production.properties"));
 
@@ -29,10 +32,12 @@ class DesktopPackagingRegressionTest {
     assertThat(macosPackageTarget)
         .contains("--main-class \"org.springframework.boot.loader.launch.JarLauncher\"");
     assertThat(macosPackageTarget).contains("--arguments \"$(SPRING_ARGS)\"");
+    assertThat(macosPackageTarget).contains("--java-options '-Djava.awt.headless=false'");
     assertThat(macosPackageTarget).contains("-Dmemoriavault.ffmpeg.path=$$APPDIR/");
     assertThat(macosPackageTarget).doesNotContain("memoriavault.desktop");
     assertThat(macosPackageTarget).doesNotContain("windows-desktop");
 
+    assertThat(mainApplication).contains("startBackend(args, false, true);");
     assertThat(productionProperties).contains("memoriavault.browser.auto-open=true");
   }
 
@@ -120,10 +125,12 @@ class DesktopPackagingRegressionTest {
         .as("Windows PowerShell 5.1 packaging script must stay ASCII-only")
         .isFalse();
     assertThat(workflow).contains("--java-options \"-Dmemoriavault.desktop=true\"");
+    assertThat(workflow).contains("--java-options \"-Djava.awt.headless=false\"");
     assertThat(workflow).contains("--java-options \"-Dmemoriavault.browser.auto-open=false\"");
     assertThat(workflow)
         .contains("--java-options '-Dmemoriavault.ffmpeg.path=$APPDIR\\ffmpeg\\ffmpeg.exe'");
     assertThat(packagingScript).contains("-Dmemoriavault.desktop=true");
+    assertThat(packagingScript).contains("-Djava.awt.headless=false");
     assertThat(packagingScript).contains("-Dmemoriavault.browser.auto-open=false");
     assertThat(packagingScript).contains("-Dmemoriavault.ffmpeg.path=$APPDIR\\ffmpeg\\ffmpeg.exe");
   }

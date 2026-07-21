@@ -196,6 +196,7 @@ Write-Host "Staged main JAR:"
 Write-Host $jarName
 Write-Host 'The release workflow now executes jpackage directly after this staging script.'
 Write-Host 'Required Windows runtime options:'
+Write-Host '-Djava.awt.headless=false'
 Write-Host '-Dmemoriavault.desktop=true'
 Write-Host '-Dmemoriavault.browser.auto-open=false'
 Write-Host '-Dmemoriavault.ffmpeg.path=$APPDIR\ffmpeg\ffmpeg.exe'

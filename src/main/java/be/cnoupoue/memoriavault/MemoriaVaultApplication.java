@@ -22,7 +22,7 @@ public class MemoriaVaultApplication {
       return;
     }
 
-    startBackend(args, true, true);
+    startBackend(args, false, true);
   }
 
   static ConfigurableApplicationContext startBackend(
