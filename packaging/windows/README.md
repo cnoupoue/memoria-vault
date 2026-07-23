@@ -7,9 +7,9 @@ This directory contains the scripts and configurations required to compile, vali
 
 ## 📁 Folder Structure
 
-*   `scripts/package-windows.ps1`: The main staging script. It safely extracts project metadata from Maven, resolves FFmpeg through Chocolatey, compiles the distribution code, generates the Windows icon, and builds the staging input for `jpackage`.
+*   `scripts/package-windows.ps1`: The main staging script. It safely extracts project metadata from Maven, resolves FFmpeg and FFprobe through Chocolatey, compiles the distribution code, generates the Windows icon, and builds the staging input for `jpackage`.
 *   `scripts/sign-sqlite-native-libs.ps1`: An optional helper utility to unpack, sign, and repack native SQLite binaries if needed.
-*   `ffmpeg/win-x64/`: The isolated directory where the verified and structurally embedded `ffmpeg.exe` binary is cached.
+*   `ffmpeg/win-x64/`: The isolated directory where the verified and structurally embedded `ffmpeg.exe` and `ffprobe.exe` binaries are cached.
 
 ---
 
@@ -43,7 +43,7 @@ Run the staging script from the repository root. This script enforces the follow
 
 * Validates that the requested target architecture matches `x64`.
 * Queries Maven directly for project version strings and artifact names (removing error-prone text parsing).
-* Resolves FFmpeg through Chocolatey and copies the real `ffmpeg.exe` into the isolated `jpackage` input layout.
+* Resolves FFmpeg through Chocolatey and copies the real `ffmpeg.exe` and `ffprobe.exe` into the isolated `jpackage` input layout.
 * Generates `dist/generated-icons/MemoriaVault.ico` from `src/main/resources/icon.png`.
 * Packages the standalone code using `mvn clean package`.
 
@@ -88,7 +88,7 @@ The `.github/workflows/release-windows.yml` workflow automates this entire lifec
 ### CI Security Guards & Standards:
 
 1. **Pre-packaging Validation:** Complete frontend (`npm test`) and backend (`./mvnw test`) test execution suites run and must pass before the build begins.
-2. **Runtime Path Isolation:** No absolute paths from the build environment are baked into the code. The runtime application resolves its bundled `ffmpeg.exe` relatively from its own installation subdirectory.
+2. **Runtime Path Isolation:** No absolute paths from the build environment are baked into the code. The runtime application resolves its bundled `ffmpeg.exe` and sibling `ffprobe.exe` relatively from its own installation subdirectory.
 3. **Windows SmartScreen Handling:** Because the installer is unsigned, automated release descriptions explicitly provide user guidance (*"More Info"* -> *"Run Anyway"*) to walk testers safely past the initial SmartScreen dialog.
 4. **Standardized Integrity Checksums:** SHA-256 files are formatted strictly relative to the release asset names, allowing end-users to run automated verification checks easily:
 ```bash

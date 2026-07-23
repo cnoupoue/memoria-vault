@@ -53,21 +53,91 @@ export function MemoryViewer({
   });
   const viewerRef = useRef<HTMLElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const lastVideoRef = useRef<HTMLVideoElement | null>(null);
 
   const hasMediaError = memory !== null && mediaErrorMemoryId === memory.id;
   const mediaErrorMessage = getPlaybackMessage(mediaErrorCategory);
   const playbackSrc =
-    playbackState.memoryId === memory?.id
+    playbackState.memoryId === memory?.id && playbackState.src
       ? playbackState.src
       : memory?.mediaUrl;
   const isPreparingPlayback =
-    playbackState.memoryId === memory?.id && playbackState.isPreparing;
+    memory?.mediaType === 'VIDEO' &&
+    ((playbackState.memoryId !== memory.id &&
+      mediaErrorMemoryId !== memory.id) ||
+      (playbackState.memoryId === memory.id && playbackState.isPreparing));
   const openOriginalStatus =
     playbackState.memoryId === memory?.id
       ? playbackState.openOriginalStatus
       : null;
 
   const isOpen = isLoading || error !== null || memory !== null;
+
+  useEffect(() => {
+    if (memory?.mediaType !== 'VIDEO') {
+      return;
+    }
+
+    let isCancelled = false;
+
+    prepareCompatibilityPlayback(memory.id)
+      .then((playback) => {
+        if (isCancelled) {
+          return;
+        }
+
+        if (
+          (playback.status === 'DIRECT' ||
+            playback.status === 'AVAILABLE' ||
+            playback.status === 'GENERATED') &&
+          playback.mediaUrl
+        ) {
+          setPlaybackState({
+            memoryId: memory.id,
+            src: playback.mediaUrl,
+            isPreparing: false,
+            openOriginalStatus: null,
+          });
+          setMediaErrorMemoryId(null);
+          return;
+        }
+
+        if (playback.status === 'FAILED') {
+          setMediaErrorMemoryId(memory.id);
+          setMediaErrorCategory('VIDEO_FORMAT_UNSUPPORTED');
+          setPlaybackState({
+            memoryId: memory.id,
+            src: null,
+            isPreparing: false,
+            openOriginalStatus: null,
+          });
+          return;
+        }
+
+        setPlaybackState({
+          memoryId: memory.id,
+          src: memory.mediaUrl,
+          isPreparing: false,
+          openOriginalStatus: null,
+        });
+      })
+      .catch(() => {
+        if (isCancelled) {
+          return;
+        }
+
+        setPlaybackState({
+          memoryId: memory.id,
+          src: memory.mediaUrl,
+          isPreparing: false,
+          openOriginalStatus: null,
+        });
+      });
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [memory?.id, memory?.mediaType, memory?.mediaUrl]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
@@ -148,9 +218,9 @@ export function MemoryViewer({
   }, [isOpen]);
 
   useEffect(() => {
-    const video = videoRef.current;
-
     return () => {
+      const video = videoRef.current ?? lastVideoRef.current;
+
       if (!video) {
         return;
       }
@@ -166,6 +236,8 @@ export function MemoryViewer({
       if (hadLoadedSource) {
         video.load();
       }
+
+      lastVideoRef.current = null;
     };
   }, [memory?.id]);
 
@@ -200,7 +272,9 @@ export function MemoryViewer({
     });
 
     try {
-      const playback = await prepareCompatibilityPlayback(memoryId);
+      const playback = await prepareCompatibilityPlayback(memoryId, {
+        forceNormalization: true,
+      });
 
       if (
         (playback.status === 'AVAILABLE' || playback.status === 'GENERATED') &&
@@ -236,6 +310,35 @@ export function MemoryViewer({
           : current,
       );
     }
+  }
+
+  function handleVideoElementFailure(video: HTMLVideoElement) {
+    if (!memory || memory.mediaType !== 'VIDEO') {
+      return;
+    }
+
+    const failedSrc = video.currentSrc;
+
+    setMediaErrorMemoryId(memory.id);
+    setMediaErrorCategory('BROWSER_MEDIA_ERROR');
+    void diagnoseVideoPlaybackFailure(video, memory.mediaUrl).then(
+      (diagnostic) => {
+        saveLastPlaybackDiagnostic(diagnostic);
+        void handleVideoFailure(memory.id, failedSrc, diagnostic.category);
+      },
+    );
+  }
+
+  function handleLoadedVideoMetadata(video: HTMLVideoElement) {
+    if (!memory || memory.mediaType !== 'VIDEO') {
+      return;
+    }
+
+    if (video.videoWidth !== 0 || video.videoHeight !== 0) {
+      return;
+    }
+
+    handleVideoElementFailure(video);
   }
 
   async function handleOpenOriginal(memoryId: string) {
@@ -335,13 +438,11 @@ export function MemoryViewer({
             </button>
 
             <div className="memory-viewer-media">
-              {isPreparingPlayback && (
+              {isPreparingPlayback ? (
                 <div className="memory-viewer-state">
                   Preparing this video for playback…
                 </div>
-              )}
-
-              {hasMediaError ? (
+              ) : hasMediaError ? (
                 <div className="memory-viewer-state memory-viewer-error">
                   <strong>{mediaErrorMessage.title}</strong>
                   <span>{mediaErrorMessage.detail}</span>
@@ -352,7 +453,7 @@ export function MemoryViewer({
                         onClick={() => void handleOpenOriginal(memory.id)}
                         type="button"
                       >
-                        Open original file
+                        Open in default video player
                       </button>
                     )}
                   {openOriginalStatus && <span>{openOriginalStatus}</span>}
@@ -370,29 +471,30 @@ export function MemoryViewer({
               ) : (
                 <video
                   key={memory.id}
-                  ref={videoRef}
+                  ref={(element) => {
+                    videoRef.current = element;
+                    if (element) {
+                      lastVideoRef.current = element;
+                    }
+                  }}
                   autoPlay
                   className="memory-viewer-video"
                   controls
-                  onError={(event) => {
-                    const failedSrc = event.currentTarget.currentSrc;
-
-                    setMediaErrorMemoryId(memory.id);
-                    setMediaErrorCategory('BROWSER_MEDIA_ERROR');
-                    void diagnoseVideoPlaybackFailure(
-                      event.currentTarget,
-                      memory.mediaUrl,
-                    ).then((diagnostic) => {
-                      saveLastPlaybackDiagnostic(diagnostic);
-                      void handleVideoFailure(
-                        memory.id,
-                        failedSrc,
-                        diagnostic.category,
-                      );
-                    });
-                  }}
+                  onError={(event) =>
+                    handleVideoElementFailure(event.currentTarget)
+                  }
+                  onLoadedMetadata={(event) =>
+                    handleLoadedVideoMetadata(event.currentTarget)
+                  }
+                  onStalled={(event) =>
+                    handleVideoElementFailure(event.currentTarget)
+                  }
                   playsInline
-                  src={playbackSrc ?? memory.mediaUrl}
+                  src={
+                    playbackSrc ??
+                    memory.mediaUrl ??
+                    `/api/memories/${memory.id}/media`
+                  }
                 />
               )}
 
@@ -415,6 +517,18 @@ export function MemoryViewer({
                   {(memory.fileSizeBytes / 1024 / 1024).toFixed(1)} MB
                 </span>
               </div>
+              {memory.mediaType === 'VIDEO' && (
+                <div className="memory-viewer-footer-action">
+                  <button
+                    className="secondary-button memory-viewer-native-open"
+                    onClick={() => void handleOpenOriginal(memory.id)}
+                    type="button"
+                  >
+                    Open in default video player
+                  </button>
+                  {openOriginalStatus && <span>{openOriginalStatus}</span>}
+                </div>
+              )}
             </footer>
           </>
         )}

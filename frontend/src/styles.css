@@ -848,6 +848,10 @@ a:focus-visible {
 }
 
 .memory-viewer-footer {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
   padding: 14px 18px;
   color: white;
   background: rgb(18 18 20 / 94%);
@@ -861,6 +865,16 @@ a:focus-visible {
 .memory-viewer-footer span {
   color: #b9b9c0;
   font-size: 0.84rem;
+}
+
+.memory-viewer-native-open {
+  flex: 0 0 auto;
+}
+
+.memory-viewer-footer-action {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
 }
 
 .memory-viewer-state {

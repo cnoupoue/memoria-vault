@@ -6,8 +6,11 @@ import {
   waitFor,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { prepareCompatibilityPlayback } from '../api/memoriaVaultApi';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  openOriginalFile,
+  prepareCompatibilityPlayback,
+} from '../api/memoriaVaultApi';
 import type { MemoryDetail } from '../api/types';
 import { MemoryViewer } from './MemoryViewer';
 
@@ -19,6 +22,7 @@ vi.mock('../api/memoriaVaultApi', () => ({
 const prepareCompatibilityPlaybackMock = vi.mocked(
   prepareCompatibilityPlayback,
 );
+const openOriginalFileMock = vi.mocked(openOriginalFile);
 
 function buildMemoryDetail(
   overrides: Partial<MemoryDetail> = {},
@@ -38,14 +42,34 @@ function buildMemoryDetail(
   };
 }
 
+async function findVideoElement(): Promise<HTMLVideoElement> {
+  return waitFor(() => {
+    const video = document.querySelector('video');
+
+    expect(video).not.toBeNull();
+
+    return video as HTMLVideoElement;
+  });
+}
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
-  vi.clearAllMocks();
+  vi.resetAllMocks();
   window.localStorage.clear();
 });
 
 describe('MemoryViewer', () => {
+  beforeEach(() => {
+    prepareCompatibilityPlaybackMock.mockImplementation((memoryId) =>
+      Promise.resolve({
+        status: 'DIRECT',
+        mediaUrl: `/api/memories/${memoryId}/media`,
+        message: 'Original playback is compatible.',
+      }),
+    );
+  });
+
   it('renders previous and next controls with disabled boundary state', () => {
     render(
       <MemoryViewer
@@ -237,7 +261,7 @@ describe('MemoryViewer', () => {
     expect(onPrevious).not.toHaveBeenCalled();
   });
 
-  it('pauses a playing video with Space and prevents page scroll', () => {
+  it('pauses a playing video with Space and prevents page scroll', async () => {
     const pauseSpy = vi
       .spyOn(HTMLMediaElement.prototype, 'pause')
       .mockImplementation(() => {});
@@ -255,7 +279,7 @@ describe('MemoryViewer', () => {
       />,
     );
 
-    const video = document.querySelector('video') as HTMLVideoElement;
+    const video = await findVideoElement();
     Object.defineProperty(video, 'paused', {
       configurable: true,
       value: false,
@@ -274,7 +298,7 @@ describe('MemoryViewer', () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
-  it('plays a paused video with Space and prevents page scroll', () => {
+  it('plays a paused video with Space and prevents page scroll', async () => {
     const playSpy = vi
       .spyOn(HTMLMediaElement.prototype, 'play')
       .mockResolvedValue(undefined);
@@ -292,7 +316,7 @@ describe('MemoryViewer', () => {
       />,
     );
 
-    const video = document.querySelector('video') as HTMLVideoElement;
+    const video = await findVideoElement();
     Object.defineProperty(video, 'paused', {
       configurable: true,
       value: true,
@@ -359,7 +383,7 @@ describe('MemoryViewer', () => {
     expect(closedEvent.defaultPrevented).toBe(false);
   });
 
-  it('ignores Space in form controls, buttons, contenteditable, and modifier shortcuts', () => {
+  it('ignores Space in form controls, buttons, contenteditable, and modifier shortcuts', async () => {
     const playSpy = vi
       .spyOn(HTMLMediaElement.prototype, 'play')
       .mockResolvedValue(undefined);
@@ -389,7 +413,7 @@ describe('MemoryViewer', () => {
       </>,
     );
 
-    const video = document.querySelector('video') as HTMLVideoElement;
+    const video = await findVideoElement();
     Object.defineProperty(video, 'paused', {
       configurable: true,
       value: true,
@@ -411,7 +435,7 @@ describe('MemoryViewer', () => {
     expect(pauseSpy).not.toHaveBeenCalled();
   });
 
-  it('stops the previous video when navigating away from it', () => {
+  it('stops the previous video when navigating away from it', async () => {
     const pauseSpy = vi
       .spyOn(HTMLMediaElement.prototype, 'pause')
       .mockImplementation(() => {});
@@ -438,7 +462,7 @@ describe('MemoryViewer', () => {
       />,
     );
 
-    const video = document.querySelector('video') as HTMLVideoElement;
+    const video = await findVideoElement();
     Object.defineProperty(video, 'paused', {
       configurable: true,
       value: false,
@@ -472,7 +496,7 @@ describe('MemoryViewer', () => {
     expect(loadSpy).toHaveBeenCalled();
   });
 
-  it('stops the current video when the viewer closes', () => {
+  it('stops the current video when the viewer closes', async () => {
     const pauseSpy = vi
       .spyOn(HTMLMediaElement.prototype, 'pause')
       .mockImplementation(() => {});
@@ -492,7 +516,7 @@ describe('MemoryViewer', () => {
       />,
     );
 
-    const video = document.querySelector('video') as HTMLVideoElement;
+    const video = await findVideoElement();
     Object.defineProperty(video, 'paused', {
       configurable: true,
       value: false,
@@ -623,11 +647,17 @@ describe('MemoryViewer', () => {
   });
 
   it('does not describe browser decoder failures as disconnected drives', async () => {
-    prepareCompatibilityPlaybackMock.mockResolvedValue({
-      status: 'UNAVAILABLE',
-      mediaUrl: null,
-      message: 'Compatibility playback is unavailable.',
-    });
+    prepareCompatibilityPlaybackMock
+      .mockResolvedValueOnce({
+        status: 'UNAVAILABLE',
+        mediaUrl: null,
+        message: 'Compatibility playback is unavailable.',
+      })
+      .mockResolvedValueOnce({
+        status: 'UNAVAILABLE',
+        mediaUrl: null,
+        message: 'Compatibility playback is unavailable.',
+      });
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue(
@@ -661,7 +691,7 @@ describe('MemoryViewer', () => {
       />,
     );
 
-    const video = document.querySelector('video') as HTMLVideoElement;
+    const video = await findVideoElement();
     Object.defineProperty(video, 'error', {
       configurable: true,
       value: {
@@ -700,11 +730,17 @@ describe('MemoryViewer', () => {
         }),
       ),
     );
-    prepareCompatibilityPlaybackMock.mockResolvedValue({
-      status: 'GENERATED',
-      mediaUrl: '/api/memories/memory-video/playback/compatible/media',
-      message: 'Compatibility playback is ready.',
-    });
+    prepareCompatibilityPlaybackMock
+      .mockResolvedValueOnce({
+        status: 'DIRECT',
+        mediaUrl: '/api/memories/memory-video/media',
+        message: 'Original playback is compatible.',
+      })
+      .mockResolvedValueOnce({
+        status: 'GENERATED',
+        mediaUrl: '/api/memories/memory-video/playback/compatible/media',
+        message: 'Compatibility playback is ready.',
+      });
 
     render(
       <MemoryViewer
@@ -726,7 +762,7 @@ describe('MemoryViewer', () => {
       />,
     );
 
-    const video = document.querySelector('video') as HTMLVideoElement;
+    const video = await findVideoElement();
     Object.defineProperty(video, 'error', {
       configurable: true,
       value: {
@@ -749,6 +785,70 @@ describe('MemoryViewer', () => {
     });
     expect(prepareCompatibilityPlaybackMock).toHaveBeenCalledWith(
       'memory-video',
+      {
+        forceNormalization: true,
+      },
     );
+  });
+
+  it('prepares a normalized video before first embedded playback when needed', async () => {
+    prepareCompatibilityPlaybackMock.mockResolvedValue({
+      status: 'AVAILABLE',
+      mediaUrl: '/api/memories/memory-video/playback/compatible/media',
+      message: 'Compatibility playback is ready.',
+    });
+
+    render(
+      <MemoryViewer
+        error={null}
+        isLoading={false}
+        memory={buildMemoryDetail({
+          id: 'memory-video',
+          mediaType: 'VIDEO',
+          mediaUrl: '/api/memories/memory-video/media',
+        })}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByText('Preparing this video for playback…'),
+    ).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(document.querySelector('video')).toHaveAttribute(
+        'src',
+        '/api/memories/memory-video/playback/compatible/media',
+      );
+    });
+  });
+
+  it('offers native playback from the video viewer', async () => {
+    openOriginalFileMock.mockResolvedValue({
+      opened: true,
+      message: 'The original file was opened locally.',
+    });
+
+    render(
+      <MemoryViewer
+        error={null}
+        isLoading={false}
+        memory={buildMemoryDetail({
+          id: 'memory-video',
+          mediaType: 'VIDEO',
+          mediaUrl: '/api/memories/memory-video/media',
+        })}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Open in default video player' }),
+    );
+
+    expect(openOriginalFileMock).toHaveBeenCalledWith('memory-video');
+    expect(
+      await screen.findByText('Opened in your default media player.'),
+    ).toBeInTheDocument();
   });
 });

@@ -67,6 +67,38 @@ function Find-InstalledFfmpeg {
     return $null
 }
 
+function Find-InstalledFfprobe {
+    $candidateRoots = @()
+    if (-not [string]::IsNullOrWhiteSpace($env:ChocolateyInstall)) {
+        $candidateRoots += (Join-Path $env:ChocolateyInstall 'lib\ffmpeg\tools')
+    }
+
+    $candidateRoots += @(
+        "C:\ProgramData\chocolatey\lib\ffmpeg\tools",
+        "C:\tools"
+    )
+
+    foreach ($candidateRoot in $candidateRoots) {
+        if ([string]::IsNullOrWhiteSpace($candidateRoot) -or -not (Test-Path -LiteralPath $candidateRoot -PathType Container)) {
+            continue
+        }
+
+        $matches = Get-ChildItem -LiteralPath $candidateRoot -Filter 'ffprobe.exe' -Recurse -ErrorAction SilentlyContinue | Sort-Object FullName
+        foreach ($match in $matches) {
+            if (Test-Path -LiteralPath $match.FullName -PathType Leaf) {
+                return [string]$match.FullName
+            }
+        }
+    }
+
+    $command = Get-Command ffprobe.exe -ErrorAction SilentlyContinue
+    if ($command -and -not [string]::IsNullOrWhiteSpace($command.Source) -and (Test-Path -LiteralPath $command.Source -PathType Leaf)) {
+        return [string]$command.Source
+    }
+
+    return $null
+}
+
 function Install-FfmpegWithChocolatey {
     if (-not (Get-Command choco.exe -ErrorAction SilentlyContinue)) {
         throw "FFmpeg download failed and Chocolatey is not available for fallback installation."
@@ -98,9 +130,10 @@ function Install-FfmpegWithChocolatey {
     return [string]$resolvedFfmpeg
 }
 
-function Stage-FfmpegFromInstalledLocation {
+function Stage-FfmpegToolsFromInstalledLocation {
     param (
-        [string]$Destination
+        [string]$FfmpegDestination,
+        [string]$FfprobeDestination
     )
 
     [string]$installedFfmpeg = Find-InstalledFfmpeg
@@ -116,8 +149,26 @@ function Stage-FfmpegFromInstalledLocation {
         throw "Resolved FFmpeg path does not exist: $installedFfmpeg"
     }
 
-    Copy-Item -LiteralPath $installedFfmpeg -Destination $Destination -Force
+    [string]$installedFfprobe = Find-InstalledFfprobe
+    if ([string]::IsNullOrWhiteSpace($installedFfprobe) -or -not (Test-Path -LiteralPath $installedFfprobe -PathType Leaf)) {
+        throw "Could not locate ffprobe.exe after resolving FFmpeg. Install a complete FFmpeg build that includes FFprobe."
+    }
+
+    Copy-Item -LiteralPath $installedFfmpeg -Destination $FfmpegDestination -Force
+    Copy-Item -LiteralPath $installedFfprobe -Destination $FfprobeDestination -Force
     Write-Host "FFmpeg staged from installed location: $installedFfmpeg"
+    Write-Host "FFprobe staged from installed location: $installedFfprobe"
+}
+
+function Stage-FfmpegFromInstalledLocation {
+    param (
+        [string]$Destination
+    )
+
+    $destinationDirectory = Split-Path -Parent $Destination
+    Stage-FfmpegToolsFromInstalledLocation `
+        -FfmpegDestination $Destination `
+        -FfprobeDestination (Join-Path $destinationDirectory 'ffprobe.exe')
 }
 
 function New-WindowsIconFromPng {
@@ -196,6 +247,7 @@ $appIconSource = Join-Path $root 'src\main\resources\icon.png'
 $windowsIcon = Join-Path $generatedIconDir 'MemoriaVault.ico'
 $ffmpegDir = Join-Path $root "packaging\windows\ffmpeg\win-$Arch"
 $ffmpegDest = Join-Path $ffmpegDir 'ffmpeg.exe'
+$ffprobeDest = Join-Path $ffmpegDir 'ffprobe.exe'
 
 Write-Host "=== RESOLVING MAVEN METADATA ==="
 # Query Maven directly for project version and artifact name instead of regex parsing
@@ -209,10 +261,10 @@ Write-Host "Target Version: $Version"
 Write-Host "Expected JAR Name: $jarName"
 
 # 1. Windows FFmpeg staging
-if (-not (Test-Path -LiteralPath $ffmpegDest -PathType Leaf)) {
-    Write-Host "FFmpeg binary missing in $ffmpegDest. Resolving Windows FFmpeg through Chocolatey..."
+if (-not (Test-Path -LiteralPath $ffmpegDest -PathType Leaf) -or -not (Test-Path -LiteralPath $ffprobeDest -PathType Leaf)) {
+    Write-Host "FFmpeg/FFprobe binaries missing in $ffmpegDir. Resolving Windows FFmpeg through Chocolatey."
     New-Item -ItemType Directory -Path $ffmpegDir -Force | Out-Null
-    Stage-FfmpegFromInstalledLocation -Destination $ffmpegDest
+    Stage-FfmpegToolsFromInstalledLocation -FfmpegDestination $ffmpegDest -FfprobeDestination $ffprobeDest
 }
 
 # 2. Executing Clean Maven Package
@@ -238,7 +290,8 @@ Copy-Item $targetJarPath $jpackageInput
 $jpackageFfmpegDir = Join-Path $jpackageInput 'ffmpeg'
 New-Item -ItemType Directory -Path $jpackageFfmpegDir -Force | Out-Null
 Copy-Item $ffmpegDest (Join-Path $jpackageFfmpegDir 'ffmpeg.exe') -Force
-Write-Host "Bundled FFmpeg staged into relative app folder layout structure."
+Copy-Item $ffprobeDest (Join-Path $jpackageFfmpegDir 'ffprobe.exe') -Force
+Write-Host "Bundled FFmpeg tools staged into relative app folder layout structure."
 
 # 5. Generate platform-specific icon from the single application icon source
 New-WindowsIconFromPng -SourcePng $appIconSource -DestinationIco $windowsIcon

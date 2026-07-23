@@ -36,6 +36,8 @@ vi.mock('./api/memoriaVaultApi', () => ({
   getTimelineMonths: vi.fn(),
   getTimelineYears: vi.fn(),
   getTodayFlashbacks: vi.fn(),
+  openOriginalFile: vi.fn(),
+  prepareCompatibilityPlayback: vi.fn(),
   removeMemoryFavorite: vi.fn(),
   startMemorySourceScan: vi.fn(),
   MemoriaVaultApiError: class MemoriaVaultApiError extends Error {},
@@ -51,6 +53,8 @@ import {
   getMemoryDetail,
   getMemorySources,
   getTimelineMonths,
+  openOriginalFile,
+  prepareCompatibilityPlayback,
   selectMemorySourceFolder,
   startMemorySourceScan,
   getTimelineYears,
@@ -66,6 +70,10 @@ const getMemoriesMock = vi.mocked(getMemories);
 const getMemoryDetailMock = vi.mocked(getMemoryDetail);
 const getMemorySourcesMock = vi.mocked(getMemorySources);
 const getTimelineMonthsMock = vi.mocked(getTimelineMonths);
+const openOriginalFileMock = vi.mocked(openOriginalFile);
+const prepareCompatibilityPlaybackMock = vi.mocked(
+  prepareCompatibilityPlayback,
+);
 const selectMemorySourceFolderMock = vi.mocked(selectMemorySourceFolder);
 const startMemorySourceScanMock = vi.mocked(startMemorySourceScan);
 const getTimelineYearsMock = vi.mocked(getTimelineYears);
@@ -119,6 +127,17 @@ beforeEach(() => {
     isFavorite: false,
     favoritedAt: null,
   });
+  openOriginalFileMock.mockResolvedValue({
+    opened: true,
+    message: 'The original file was opened locally.',
+  });
+  prepareCompatibilityPlaybackMock.mockImplementation((memoryId) =>
+    Promise.resolve({
+      status: 'DIRECT',
+      mediaUrl: `/api/memories/${memoryId}/media`,
+      message: 'Original playback is compatible.',
+    }),
+  );
   addMemoryFavoriteMock.mockResolvedValue({
     id: 'memory-video',
     capturedAt: '2026-01-01',
@@ -417,7 +436,7 @@ describe('App footer', () => {
       screen.getByRole('link', {
         name: 'Open source on GitHub, contributions welcome',
       }),
-    ).toHaveAttribute('href', 'https://github.com/cnoupoue/memoriavault');
+    ).toHaveAttribute('href', 'https://github.com/cnoupoue/memoria-vault');
 
     expect(screen.getByRole('link', { name: 'LinkedIn' })).toHaveAttribute(
       'href',
@@ -726,10 +745,12 @@ describe('App viewer navigation', () => {
     await waitFor(() => {
       expect(viewer().getByText('2026-01-01')).toBeInTheDocument();
     });
-    expect(document.querySelector('video')).toHaveAttribute(
-      'src',
-      '/api/memories/memory-video-only/media',
-    );
+    await waitFor(() => {
+      expect(document.querySelector('video')).toBeInTheDocument();
+      expect(prepareCompatibilityPlaybackMock).toHaveBeenCalledWith(
+        'memory-video-only',
+      );
+    });
     expect(
       viewer().getByRole('button', { name: 'Previous memory' }),
     ).toBeDisabled();
@@ -911,9 +932,11 @@ describe('App viewer navigation', () => {
     await waitFor(() => {
       expect(viewer().getByText('2019-07-18')).toBeInTheDocument();
     });
-    expect(document.querySelector('video')).toHaveAttribute(
-      'src',
-      '/api/memories/flashback-second/media',
-    );
+    await waitFor(() => {
+      expect(document.querySelector('video')).toBeInTheDocument();
+      expect(prepareCompatibilityPlaybackMock).toHaveBeenCalledWith(
+        'flashback-second',
+      );
+    });
   });
 });

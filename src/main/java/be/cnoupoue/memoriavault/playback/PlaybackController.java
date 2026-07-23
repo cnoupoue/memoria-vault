@@ -3,6 +3,7 @@ package be.cnoupoue.memoriavault.playback;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -20,8 +21,11 @@ public class PlaybackController {
   }
 
   @PostMapping("/{id}/playback/compatible")
-  public CompatibilityPlaybackResponse prepareCompatibilityPlayback(@PathVariable String id) {
-    return compatibilityPlaybackService.prepareCompatibilityPlayback(id);
+  public CompatibilityPlaybackResponse prepareCompatibilityPlayback(
+      @PathVariable String id,
+      @RequestParam(name = "forceNormalization", defaultValue = "false")
+          boolean forceNormalization) {
+    return compatibilityPlaybackService.prepareCompatibilityPlayback(id, forceNormalization);
   }
 
   @PostMapping("/{id}/open-original")

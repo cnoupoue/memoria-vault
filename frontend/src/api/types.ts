@@ -171,7 +171,7 @@ export type Diagnostics = {
 };
 
 export type CompatibilityPlaybackStatus =
-  'AVAILABLE' | 'GENERATED' | 'UNAVAILABLE' | 'FAILED';
+  'DIRECT' | 'AVAILABLE' | 'GENERATED' | 'UNAVAILABLE' | 'FAILED';
 
 export type CompatibilityPlayback = {
   status: CompatibilityPlaybackStatus;

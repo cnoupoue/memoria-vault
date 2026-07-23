@@ -126,9 +126,18 @@ export function removeMemoryFavorite(memoryId: string): Promise<Memory> {
 
 export function prepareCompatibilityPlayback(
   memoryId: string,
+  options: { forceNormalization?: boolean } = {},
 ): Promise<CompatibilityPlayback> {
+  const params = new URLSearchParams();
+
+  if (options.forceNormalization) {
+    params.set('forceNormalization', 'true');
+  }
+
+  const query = params.toString();
+
   return request<CompatibilityPlayback>(
-    `/api/memories/${memoryId}/playback/compatible`,
+    `/api/memories/${memoryId}/playback/compatible${query ? `?${query}` : ''}`,
     {
       method: 'POST',
     },

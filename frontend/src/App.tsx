@@ -756,7 +756,7 @@ function App() {
 
           <nav aria-label="Project links" className="site-footer-links">
             <a
-              href="https://github.com/cnoupoue/memoriavault"
+              href="https://github.com/cnoupoue/memoria-vault"
               rel="noreferrer"
               target="_blank"
             >
