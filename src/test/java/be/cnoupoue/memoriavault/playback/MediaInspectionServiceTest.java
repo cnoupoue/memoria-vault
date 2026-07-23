@@ -68,8 +68,10 @@ class MediaInspectionServiceTest {
   }
 
   private MediaInspectionResult inspect(String ffprobeJson) throws Exception {
-    Path ffmpeg = fakeExecutable("ffmpeg", "ffmpeg");
-    fakeExecutable("ffprobe", ffprobeScript(ffprobeJson));
+    Path ffprobeOutput =
+        Files.writeString(temporaryDirectory.resolve("probe-output.json"), ffprobeJson);
+    Path ffmpeg = fakeExecutable(ffmpegBinaryName(), ffmpegScript());
+    fakeExecutable(ffprobeBinaryName(), ffprobeScript(ffprobeOutput));
     Path media = Files.writeString(temporaryDirectory.resolve("video with ünicode.mp4"), "video");
     MediaInspectionService service =
         new MediaInspectionService(resolver(ffmpeg), new ObjectMapper(), ignored -> true);
@@ -126,14 +128,43 @@ class MediaInspectionServiceTest {
     return executable;
   }
 
-  private String ffprobeScript(String json) {
-    return """
-        #!/bin/sh
-        cat <<'JSON'
-        %s
-        JSON
-        """
-        .formatted(json);
+  private String ffmpegBinaryName() {
+    return isWindows() ? "ffmpeg.cmd" : "ffmpeg";
+  }
+
+  private String ffprobeBinaryName() {
+    return isWindows() ? "ffprobe.cmd" : "ffprobe";
+  }
+
+  private String ffmpegScript() {
+    return isWindows()
+        ? """
+            @echo off
+            exit /b 0
+            """
+        : """
+            #!/bin/sh
+            exit 0
+            """;
+  }
+
+  private String ffprobeScript(Path ffprobeOutput) {
+    return isWindows()
+        ? """
+            @echo off
+            type "%s"
+            exit /b 0
+            """
+            .formatted(ffprobeOutput)
+        : """
+            #!/bin/sh
+            cat "%s"
+            """
+            .formatted(ffprobeOutput);
+  }
+
+  private boolean isWindows() {
+    return System.getProperty("os.name", "").toLowerCase().contains("win");
   }
 
   private FfmpegPathResolver resolver(Path ffmpeg) {

@@ -103,8 +103,16 @@ public class MediaInspectionService {
 
   private String ffprobeBinaryName(Path ffmpegPath) {
     String ffmpegName = ffmpegPath.getFileName().toString();
+    String lowerFfmpegName = ffmpegName.toLowerCase();
 
-    return ffmpegName.toLowerCase().endsWith(".exe") ? "ffprobe.exe" : "ffprobe";
+    if (lowerFfmpegName.endsWith(".exe")) {
+      return "ffprobe.exe";
+    }
+    if (lowerFfmpegName.endsWith(".cmd")) {
+      return "ffprobe.cmd";
+    }
+
+    return "ffprobe";
   }
 
   private JsonNode probe(Path ffprobePath, Path mediaPath) throws IOException {

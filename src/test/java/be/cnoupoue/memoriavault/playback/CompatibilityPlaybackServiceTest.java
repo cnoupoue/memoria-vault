@@ -251,10 +251,10 @@ class CompatibilityPlaybackServiceTest {
         @echo off
         setlocal enabledelayedexpansion
         break > "%s"
+        >> "%s" echo(%%*
         set "out="
         :args
         if "%%~1"=="" goto done
-        <nul set /p="%%~1 " >> "%s"
         set "out=%%~1"
         shift
         goto args
