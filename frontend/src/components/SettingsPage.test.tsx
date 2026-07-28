@@ -555,6 +555,24 @@ Local database: Ready`);
     expect(startMemorySourceScanMock).not.toHaveBeenCalled();
   });
 
+  it('keeps remove available when a source folder is missing', async () => {
+    getMemorySourcesMock.mockResolvedValue([
+      buildSource({
+        availabilityStatus: 'UNAVAILABLE',
+        availabilityMessage:
+          'Connect the drive containing this source, then refresh its status.',
+      }),
+    ]);
+
+    render(<SettingsPage onSourceScanned={vi.fn()} />);
+
+    expect(
+      await screen.findByText('Folder moved or missing'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Scan source' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Remove' })).toBeEnabled();
+  });
+
   it('refreshes a single source availability status', async () => {
     const user = userEvent.setup();
 
@@ -754,6 +772,7 @@ Local database: Ready`);
       restored: 0,
       alreadyFavorite: 1,
       notFound: 1,
+      skipped: 1,
     });
     restoreMemorySourceFavoritesBackupMock.mockResolvedValue({
       totalFavorites: 3,
@@ -761,6 +780,7 @@ Local database: Ready`);
       restored: 1,
       alreadyFavorite: 1,
       notFound: 1,
+      skipped: 1,
     });
 
     const { container } = render(<SettingsPage onSourceScanned={vi.fn()} />);
@@ -796,9 +816,7 @@ Local database: Ready`);
       await screen.findByText('Favorites restore summary'),
     ).toBeInTheDocument();
     expect(
-      screen.getByText(
-        '1 restored · 1 already favorite · 1 could not be matched',
-      ),
+      screen.getByText('1 restored · 1 already favorite · 1 skipped'),
     ).toBeInTheDocument();
   });
 
@@ -909,5 +927,39 @@ Local database: Ready`);
     expect(deleteMemorySourceMock).toHaveBeenCalledWith('source-1');
     expect(onSourceDeleted).toHaveBeenCalledWith('source-1');
     expect(onSourceScanned).toHaveBeenCalled();
+  });
+
+  it('uses stale-source cleanup confirmation copy before deleting', async () => {
+    const user = userEvent.setup();
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+    getMemorySourcesMock.mockResolvedValue([buildSource({})]);
+
+    render(<SettingsPage onSourceScanned={vi.fn()} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Remove' }));
+
+    expect(confirmSpy).toHaveBeenCalledWith(
+      'Remove "Snapchat USB" from Memoria Vault?\n\nMemoria Vault will remove this source from the application. Your original files will not be deleted. Local indexes and related application data may be removed.',
+    );
+    expect(deleteMemorySourceMock).not.toHaveBeenCalled();
+  });
+
+  it('shows an actionable message when source deletion fails', async () => {
+    const user = userEvent.setup();
+
+    getMemorySourcesMock.mockResolvedValue([buildSource({})]);
+    deleteMemorySourceMock.mockRejectedValue(new Error('database locked'));
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<SettingsPage onSourceScanned={vi.fn()} />);
+
+    await user.click(await screen.findByRole('button', { name: 'Remove' }));
+
+    expect(
+      await screen.findByText(
+        'Could not remove this source. Memoria Vault could not update its local data.',
+      ),
+    ).toBeInTheDocument();
   });
 });

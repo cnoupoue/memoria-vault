@@ -24,6 +24,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.context.ActiveProfiles;
@@ -41,6 +42,9 @@ class MemorySourceAvailabilityApiTests {
   @Autowired private MemoryScanJobRepository memoryScanJobRepository;
 
   @Autowired private SnapMemoryRepository snapMemoryRepository;
+
+  @Value("${memoriavault.thumbnail.directory}")
+  private String thumbnailDirectory;
 
   @TempDir private Path temporaryDirectory;
 
@@ -173,13 +177,97 @@ class MemorySourceAvailabilityApiTests {
         .isZero();
     org.assertj.core.api.Assertions.assertThat(
             snapMemoryRepository.countBySourceId("source-already-deleted"))
-        .isZero();
+        .isEqualTo(1);
     org.assertj.core.api.Assertions.assertThat(
             memoryScanJobRepository.countBySourceId(source.getId()))
         .isZero();
     org.assertj.core.api.Assertions.assertThat(
             memoryScanJobRepository.countBySourceId("source-already-deleted"))
+        .isEqualTo(1);
+  }
+
+  @Test
+  void deletesSourceWhoseFolderIsMissingWithoutTouchingOriginalMedia() throws Exception {
+    Path sourceFolder = Files.createDirectory(temporaryDirectory.resolve("source-folder"));
+    Path originalMedia = Files.writeString(sourceFolder.resolve("original.jpg"), "media");
+    MemorySource source = saveSource("source-missing-delete", sourceFolder);
+    saveMemory("memory-missing-delete", source.getId(), originalMedia);
+    Files.delete(originalMedia);
+    Files.delete(sourceFolder);
+
+    mockMvc.perform(delete("/api/sources/{id}", source.getId())).andExpect(status().isNoContent());
+
+    org.assertj.core.api.Assertions.assertThat(memorySourceRepository.existsById(source.getId()))
+        .isFalse();
+    org.assertj.core.api.Assertions.assertThat(snapMemoryRepository.countBySourceId(source.getId()))
         .isZero();
+  }
+
+  @Test
+  void deletesSourceOnDisconnectedDrivePath() throws Exception {
+    Path disconnectedDrivePath =
+        temporaryDirectory.resolve("disconnected-drive").resolve("snapchat-export");
+    MemorySource source = saveSource("source-disconnected-delete", disconnectedDrivePath);
+    saveMemory(source.getId());
+
+    mockMvc.perform(delete("/api/sources/{id}", source.getId())).andExpect(status().isNoContent());
+
+    org.assertj.core.api.Assertions.assertThat(memorySourceRepository.existsById(source.getId()))
+        .isFalse();
+    org.assertj.core.api.Assertions.assertThat(snapMemoryRepository.countBySourceId(source.getId()))
+        .isZero();
+  }
+
+  @Test
+  void deletesDuplicateSourceRecordsIndependentlyById() throws Exception {
+    Path duplicatePath = temporaryDirectory.resolve("duplicate-path");
+    MemorySource first = saveSource("source-duplicate-first", duplicatePath);
+    MemorySource second = saveSource("source-duplicate-second", duplicatePath);
+    saveMemory("memory-duplicate-first", first.getId());
+    saveMemory("memory-duplicate-second", second.getId());
+
+    mockMvc.perform(delete("/api/sources/{id}", first.getId())).andExpect(status().isNoContent());
+
+    org.assertj.core.api.Assertions.assertThat(memorySourceRepository.existsById(first.getId()))
+        .isFalse();
+    org.assertj.core.api.Assertions.assertThat(memorySourceRepository.existsById(second.getId()))
+        .isTrue();
+    org.assertj.core.api.Assertions.assertThat(snapMemoryRepository.countBySourceId(first.getId()))
+        .isZero();
+    org.assertj.core.api.Assertions.assertThat(snapMemoryRepository.countBySourceId(second.getId()))
+        .isEqualTo(1);
+
+    mockMvc.perform(delete("/api/sources/{id}", second.getId())).andExpect(status().isNoContent());
+
+    org.assertj.core.api.Assertions.assertThat(memorySourceRepository.existsById(second.getId()))
+        .isFalse();
+    org.assertj.core.api.Assertions.assertThat(snapMemoryRepository.countBySourceId(second.getId()))
+        .isZero();
+  }
+
+  @Test
+  void deletingSourceIsIdempotentWhenApplicationCacheIsAlreadyMissing() throws Exception {
+    MemorySource source = saveSource("source-idempotent-delete", temporaryDirectory);
+    saveMemory("memory-idempotent-delete", source.getId());
+    Files.deleteIfExists(Path.of(thumbnailDirectory).resolve("memory-idempotent-delete.jpg"));
+
+    mockMvc.perform(delete("/api/sources/{id}", source.getId())).andExpect(status().isNoContent());
+    mockMvc.perform(delete("/api/sources/{id}", source.getId())).andExpect(status().isNoContent());
+
+    org.assertj.core.api.Assertions.assertThat(memorySourceRepository.existsById(source.getId()))
+        .isFalse();
+  }
+
+  @Test
+  void deletingSourceDoesNotDeleteOriginalMediaFiles() throws Exception {
+    Path originalMedia =
+        Files.writeString(temporaryDirectory.resolve("original-media.jpg"), "media");
+    MemorySource source = saveSource("source-preserve-media", temporaryDirectory);
+    saveMemory("memory-preserve-media", source.getId(), originalMedia);
+
+    mockMvc.perform(delete("/api/sources/{id}", source.getId())).andExpect(status().isNoContent());
+
+    org.assertj.core.api.Assertions.assertThat(Files.readString(originalMedia)).isEqualTo("media");
   }
 
   private MemorySource saveSource(String id, Path rootPath) {
@@ -201,6 +289,10 @@ class MemorySourceAvailabilityApiTests {
   }
 
   private void saveMemory(String id, String sourceId) {
+    saveMemory(id, sourceId, temporaryDirectory.resolve("existing.jpg"));
+  }
+
+  private void saveMemory(String id, String sourceId, Path mediaPath) {
     String now = Instant.now().toString();
 
     snapMemoryRepository.save(
@@ -210,7 +302,7 @@ class MemorySourceAvailabilityApiTests {
             id + "-external",
             "2020-06-10",
             SnapMemoryType.IMAGE,
-            temporaryDirectory.resolve("existing.jpg").toString(),
+            mediaPath.toString(),
             null,
             123,
             now,

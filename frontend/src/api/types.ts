@@ -95,6 +95,7 @@ export type FavoritesRestoreSummary = {
   restored: number;
   alreadyFavorite: number;
   notFound: number;
+  skipped: number;
 };
 
 export type SourceAvailabilityStatus =

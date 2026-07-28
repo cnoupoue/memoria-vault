@@ -717,7 +717,7 @@ export function SettingsPage({
 
   async function handleDelete(source: MemorySource) {
     const confirmed = window.confirm(
-      `Remove "${source.name}" from Memoria Vault?\n\nThis only removes the configured source. It will not delete any files from your drive.`,
+      `Remove "${source.name}" from Memoria Vault?\n\nMemoria Vault will remove this source from the application. Your original files will not be deleted. Local indexes and related application data may be removed.`,
     );
 
     if (!confirmed) {
@@ -743,7 +743,9 @@ export function SettingsPage({
       onSourceDeleted?.(source.id);
       onSourceScanned();
     } catch {
-      setError('Could not remove this source.');
+      setError(
+        'Could not remove this source. Memoria Vault could not update its local data.',
+      );
     } finally {
       setDeletingSourceId(null);
     }
@@ -792,7 +794,7 @@ export function SettingsPage({
           <span>
             {restoreSummary.restored.toLocaleString()} restored ·{' '}
             {restoreSummary.alreadyFavorite.toLocaleString()} already favorite ·{' '}
-            {restoreSummary.notFound.toLocaleString()} could not be matched
+            {restoreSummary.skipped.toLocaleString()} skipped
           </span>
         </div>
       )}
@@ -922,8 +924,8 @@ export function SettingsPage({
             </dl>
             {restorePreview.summary.notFound > 0 && (
               <p>
-                Some memories no longer exist in this source or could not be
-                matched.
+                Some backup entries refer to media that is missing or no longer
+                indexed. Restore will skip those entries and continue.
               </p>
             )}
             <div className="confirmation-actions">

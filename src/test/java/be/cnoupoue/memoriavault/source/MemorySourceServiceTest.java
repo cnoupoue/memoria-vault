@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -35,6 +36,7 @@ class MemorySourceServiceTest {
   @Mock private MemoryIndexPersistence memoryIndexPersistence;
   @Mock private MemoryScanJobRepository memoryScanJobRepository;
   @Mock private SnapMemoryRepository snapMemoryRepository;
+  @Mock private SourceCacheCleanupService sourceCacheCleanupService;
 
   @TempDir private Path temporaryDirectory;
 
@@ -47,7 +49,8 @@ class MemorySourceServiceTest {
             availabilityService,
             memoryIndexPersistence,
             memoryScanJobRepository,
-            snapMemoryRepository);
+            snapMemoryRepository,
+            sourceCacheCleanupService);
     Path rawPath = temporaryDirectory.resolve("snapchat-memories").resolve("..").resolve(".");
     String normalizedPath = rawPath.toAbsolutePath().normalize().toString();
     ArgumentCaptor<MemorySource> sourceCaptor = ArgumentCaptor.forClass(MemorySource.class);
@@ -76,7 +79,8 @@ class MemorySourceServiceTest {
             availabilityService,
             memoryIndexPersistence,
             memoryScanJobRepository,
-            snapMemoryRepository);
+            snapMemoryRepository,
+            sourceCacheCleanupService);
     String normalizedPath = temporaryDirectory.toAbsolutePath().normalize().toString();
 
     when(memorySourceRepository.existsByRootPath(normalizedPath)).thenReturn(true);
@@ -98,7 +102,8 @@ class MemorySourceServiceTest {
             availabilityService,
             memoryIndexPersistence,
             memoryScanJobRepository,
-            snapMemoryRepository);
+            snapMemoryRepository,
+            sourceCacheCleanupService);
     MemorySource source = source("source-1", temporaryDirectory);
 
     when(memorySourceRepository.findAll()).thenReturn(List.of(source));
@@ -120,20 +125,37 @@ class MemorySourceServiceTest {
             availabilityService,
             memoryIndexPersistence,
             memoryScanJobRepository,
-            snapMemoryRepository);
+            snapMemoryRepository,
+            sourceCacheCleanupService);
     MemorySource source = source("source-delete", temporaryDirectory);
 
-    when(memorySourceRepository.findById(source.getId())).thenReturn(Optional.of(source));
+    when(memorySourceRepository.existsById(source.getId())).thenReturn(true);
+    when(snapMemoryRepository.findBySourceId(source.getId()))
+        .thenReturn(List.of(memory("memory-delete", source.getId(), "external-delete")));
 
     service.delete(source.getId());
 
     InOrder inOrder =
         inOrder(memoryScanJobRepository, memoryIndexPersistence, memorySourceRepository);
-    inOrder.verify(memoryScanJobRepository).deleteOrphaned();
-    inOrder.verify(memoryIndexPersistence).deleteOrphaned();
     inOrder.verify(memoryScanJobRepository).deleteBySourceId(source.getId());
     inOrder.verify(memoryIndexPersistence).deleteBySourceId(source.getId());
     inOrder.verify(memorySourceRepository).deleteById(source.getId());
+    verify(sourceCacheCleanupService)
+        .deleteApplicationCaches(source.getId(), List.of("memory-delete"));
+  }
+
+  @Test
+  void deletingMissingSourceIsIdempotentAndDoesNotCleanupByPath() {
+    MemorySourceService service = service();
+
+    when(memorySourceRepository.existsById("source-missing")).thenReturn(false);
+
+    service.delete("source-missing");
+
+    verify(memoryScanJobRepository, never()).deleteBySourceId("source-missing");
+    verify(memoryIndexPersistence, never()).deleteBySourceId("source-missing");
+    verify(memorySourceRepository, never()).deleteById("source-missing");
+    verify(sourceCacheCleanupService, never()).deleteApplicationCaches(any(), any());
   }
 
   @Test
@@ -145,7 +167,8 @@ class MemorySourceServiceTest {
             availabilityService,
             memoryIndexPersistence,
             memoryScanJobRepository,
-            snapMemoryRepository);
+            snapMemoryRepository,
+            sourceCacheCleanupService);
     MemorySource source = source("source-1", temporaryDirectory);
     SnapMemory favorite =
         memory(
@@ -184,7 +207,8 @@ class MemorySourceServiceTest {
             availabilityService,
             memoryIndexPersistence,
             memoryScanJobRepository,
-            snapMemoryRepository);
+            snapMemoryRepository,
+            sourceCacheCleanupService);
     MemorySource source = source("source-1", temporaryDirectory);
 
     when(memorySourceRepository.findById(source.getId())).thenReturn(Optional.of(source));
@@ -248,6 +272,7 @@ class MemorySourceServiceTest {
     assertThat(preview.restored()).isZero();
     assertThat(preview.alreadyFavorite()).isEqualTo(1);
     assertThat(preview.notFound()).isEqualTo(1);
+    assertThat(preview.skipped()).isEqualTo(1);
   }
 
   @Test
@@ -294,6 +319,7 @@ class MemorySourceServiceTest {
     assertThat(summary.restored()).isEqualTo(1);
     assertThat(summary.alreadyFavorite()).isEqualTo(1);
     assertThat(summary.notFound()).isZero();
+    assertThat(summary.skipped()).isZero();
     assertThat(newFavorite.isFavorite()).isTrue();
     assertThat(newFavorite.getFavoritedAt()).isEqualTo("2026-07-18T10:00:00Z");
     assertThat(existingFavorite.isFavorite()).isTrue();
@@ -400,7 +426,20 @@ class MemorySourceServiceTest {
         new SourceAvailabilityService(),
         memoryIndexPersistence,
         memoryScanJobRepository,
-        snapMemoryRepository);
+        snapMemoryRepository,
+        sourceCacheCleanupService);
+  }
+
+  private SnapMemory memory(String id, String sourceId, String externalMemoryId) {
+    return memory(
+        id,
+        sourceId,
+        externalMemoryId,
+        "2024-01-02",
+        SnapMemoryType.IMAGE,
+        temporaryDirectory.resolve(id + ".jpg").toString(),
+        false,
+        null);
   }
 
   private ImportFavoritesBackupRequest backup(ImportFavoriteBackupMemoryRequest... favorites) {

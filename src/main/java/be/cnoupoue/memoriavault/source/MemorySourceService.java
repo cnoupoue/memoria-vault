@@ -31,18 +31,21 @@ public class MemorySourceService {
   private final MemoryIndexPersistence memoryIndexPersistence;
   private final MemoryScanJobRepository memoryScanJobRepository;
   private final SnapMemoryRepository snapMemoryRepository;
+  private final SourceCacheCleanupService sourceCacheCleanupService;
 
   public MemorySourceService(
       MemorySourceRepository memorySourceRepository,
       SourceAvailabilityService sourceAvailabilityService,
       MemoryIndexPersistence memoryIndexPersistence,
       MemoryScanJobRepository memoryScanJobRepository,
-      SnapMemoryRepository snapMemoryRepository) {
+      SnapMemoryRepository snapMemoryRepository,
+      SourceCacheCleanupService sourceCacheCleanupService) {
     this.memorySourceRepository = memorySourceRepository;
     this.sourceAvailabilityService = sourceAvailabilityService;
     this.memoryIndexPersistence = memoryIndexPersistence;
     this.memoryScanJobRepository = memoryScanJobRepository;
     this.snapMemoryRepository = snapMemoryRepository;
+    this.sourceCacheCleanupService = sourceCacheCleanupService;
   }
 
   public MemorySourceResponse create(CreateMemorySourceRequest request) {
@@ -225,12 +228,17 @@ public class MemorySourceService {
   }
 
   public void delete(String sourceId) {
-    findById(sourceId);
-    memoryScanJobRepository.deleteOrphaned();
-    memoryIndexPersistence.deleteOrphaned();
+    if (!memorySourceRepository.existsById(sourceId)) {
+      return;
+    }
+
+    List<String> memoryIds =
+        snapMemoryRepository.findBySourceId(sourceId).stream().map(SnapMemory::getId).toList();
+
     memoryScanJobRepository.deleteBySourceId(sourceId);
     memoryIndexPersistence.deleteBySourceId(sourceId);
     memorySourceRepository.deleteById(sourceId);
+    sourceCacheCleanupService.deleteApplicationCaches(sourceId, memoryIds);
   }
 
   private record FavoriteRestoreCandidate(
@@ -241,12 +249,17 @@ public class MemorySourceService {
 
     private FavoritesRestoreSummaryResponse toPreviewResponse() {
       return new FavoritesRestoreSummaryResponse(
-          totalFavorites, restorableCount(), 0, alreadyFavoriteCount(), notFound);
+          totalFavorites, restorableCount(), 0, alreadyFavoriteCount(), notFound, skippedCount());
     }
 
     private FavoritesRestoreSummaryResponse toRestoreResponse() {
       return new FavoritesRestoreSummaryResponse(
-          totalFavorites, restorableCount(), restoredCount(), alreadyFavoriteCount(), notFound);
+          totalFavorites,
+          restorableCount(),
+          restoredCount(),
+          alreadyFavoriteCount(),
+          notFound,
+          skippedCount());
     }
 
     private int restorableCount() {
@@ -263,6 +276,10 @@ public class MemorySourceService {
     private int alreadyFavoriteCount() {
       return (int)
           candidates.values().stream().filter(candidate -> candidate.memory().isFavorite()).count();
+    }
+
+    private int skippedCount() {
+      return notFound;
     }
   }
 }

@@ -16,7 +16,7 @@ public class MemorySource {
   @Column(name = "name", nullable = false)
   private String name;
 
-  @Column(name = "root_path", nullable = false, unique = true)
+  @Column(name = "root_path", nullable = false)
   private String rootPath;
 
   @Column(name = "last_scan_at")
