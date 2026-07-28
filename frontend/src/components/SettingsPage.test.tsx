@@ -1,7 +1,7 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Diagnostics, MemorySource } from '../api/types';
+import type { Diagnostics, FavoritesBackup, MemorySource } from '../api/types';
 import { saveLastPlaybackDiagnostic } from '../videoPlaybackDiagnostics';
 import { SettingsPage } from './SettingsPage';
 
@@ -707,8 +707,10 @@ Local database: Ready`);
     const revokeObjectUrlSpy = vi
       .spyOn(URL, 'revokeObjectURL')
       .mockImplementation(() => {});
+    const anchorClickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {});
 
-    HTMLAnchorElement.prototype.click = vi.fn();
     getMemorySourcesMock.mockResolvedValue([buildSource({ favoriteCount: 1 })]);
     exportMemorySourceFavoritesBackupMock.mockResolvedValue({
       version: 1,
@@ -740,10 +742,75 @@ Local database: Ready`);
     });
     expect(createObjectUrlSpy).toHaveBeenCalledWith(expect.any(Blob));
     expect(appendSpy).toHaveBeenCalledWith(expect.any(HTMLAnchorElement));
-    expect(revokeObjectUrlSpy).toHaveBeenCalledWith('blob:backup');
+    expect(anchorClickSpy).toHaveBeenCalled();
+    expect(revokeObjectUrlSpy).not.toHaveBeenCalled();
     expect(
-      screen.getByText('Favorites backup downloaded.'),
+      screen.getByText(
+        'Favorites backup exported as memoria-vault-favorites-backup-source-1.json.',
+      ),
     ).toBeInTheDocument();
+  });
+
+  it('shows an error when the browser download request fails', async () => {
+    const user = userEvent.setup();
+
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:backup');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {
+      throw new Error('download blocked');
+    });
+
+    getMemorySourcesMock.mockResolvedValue([buildSource({ favoriteCount: 1 })]);
+    exportMemorySourceFavoritesBackupMock.mockResolvedValue({
+      version: 1,
+      exportedAt: '2026-07-18T00:00:00Z',
+      sourceId: 'source-1',
+      favorites: [],
+    });
+
+    render(<SettingsPage onSourceScanned={vi.fn()} />);
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Export Favorites' }),
+    );
+
+    expect(
+      await screen.findByText(
+        'Could not export favorites backup. Try again, or choose a different downloads location in your browser.',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('prevents multiple rapid favorites exports', async () => {
+    const user = userEvent.setup();
+    let resolveExport: (backup: FavoritesBackup) => void = () => {};
+
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:backup');
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    getMemorySourcesMock.mockResolvedValue([buildSource({ favoriteCount: 1 })]);
+    exportMemorySourceFavoritesBackupMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveExport = resolve;
+      }),
+    );
+
+    render(<SettingsPage onSourceScanned={vi.fn()} />);
+
+    const exportButton = await screen.findByRole('button', {
+      name: 'Export Favorites',
+    });
+
+    await user.dblClick(exportButton);
+
+    expect(exportMemorySourceFavoritesBackupMock).toHaveBeenCalledTimes(1);
+
+    resolveExport({
+      version: 1,
+      exportedAt: '2026-07-18T00:00:00Z',
+      sourceId: 'source-1',
+      favorites: [],
+    });
   });
 
   it('previews and restores a selected favorites backup', async () => {

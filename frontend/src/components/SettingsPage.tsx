@@ -90,19 +90,66 @@ function getSourceStateLabel(
   return getAvailabilityLabel(source.availabilityStatus);
 }
 
-function downloadFavoritesBackup(source: MemorySource, backup: unknown) {
-  const blob = new Blob([JSON.stringify(backup, null, 2)], {
+const DOWNLOAD_URL_REVOKE_DELAY_MS = 30_000;
+
+function downloadFavoritesBackup(
+  source: MemorySource,
+  backup: unknown,
+): string {
+  const filename = `memoria-vault-favorites-backup-${source.id}.json`;
+
+  console.info('favorites_export: serializing backup', {
+    sourceId: source.id,
+    filename,
+  });
+
+  const serializedBackup = JSON.stringify(backup, null, 2);
+
+  if (!serializedBackup) {
+    throw new Error('Favorites backup could not be serialized.');
+  }
+
+  const blob = new Blob([serializedBackup], {
     type: 'application/json',
   });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
 
   link.href = url;
-  link.download = `memoria-vault-favorites-backup-${source.id}.json`;
+  link.download = filename;
   document.body.append(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+
+  try {
+    console.info('favorites_export: download requested', {
+      sourceId: source.id,
+      filename,
+    });
+    link.click();
+    console.info('favorites_export: browser accepted download request', {
+      sourceId: source.id,
+      filename,
+    });
+
+    window.setTimeout(() => {
+      URL.revokeObjectURL(url);
+      console.info('favorites_export: download object URL revoked', {
+        sourceId: source.id,
+        filename,
+      });
+    }, DOWNLOAD_URL_REVOKE_DELAY_MS);
+
+    return filename;
+  } catch (error) {
+    URL.revokeObjectURL(url);
+    console.error('favorites_export: download request failed', {
+      sourceId: source.id,
+      filename,
+      error,
+    });
+    throw error;
+  } finally {
+    link.remove();
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -277,6 +324,9 @@ export function SettingsPage({
   const [pendingRescanSource, setPendingRescanSource] =
     useState<MemorySource | null>(null);
   const [isBackingUpFavorites, setIsBackingUpFavorites] = useState(false);
+  const [backingUpFavoritesSourceId, setBackingUpFavoritesSourceId] = useState<
+    string | null
+  >(null);
   const [isFavoritesBackupHelpOpen, setIsFavoritesBackupHelpOpen] =
     useState(false);
   const [importSource, setImportSource] = useState<MemorySource | null>(null);
@@ -297,6 +347,7 @@ export function SettingsPage({
   >('idle');
 
   const pollingIntervalRef = useRef<number | null>(null);
+  const favoritesBackupInFlightRef = useRef(false);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
   const favoritesImportInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -626,17 +677,48 @@ export function SettingsPage({
   }
 
   async function handleBackupFavorites(source: MemorySource) {
+    if (favoritesBackupInFlightRef.current) {
+      console.info('favorites_export: ignored duplicate export click', {
+        sourceId: source.id,
+      });
+      return;
+    }
+
+    favoritesBackupInFlightRef.current = true;
+    console.info('favorites_export: button clicked', { sourceId: source.id });
     setIsBackingUpFavorites(true);
+    setBackingUpFavoritesSourceId(source.id);
     setError(null);
 
     try {
+      console.info('favorites_export: export command started', {
+        sourceId: source.id,
+      });
       const backup = await exportMemorySourceFavoritesBackup(source.id);
-      downloadFavoritesBackup(source, backup);
-      setSuccessMessage('Favorites backup downloaded.');
-    } catch {
-      setError('Could not export favorites backup.');
+      console.info('favorites_export: backup payload received', {
+        sourceId: source.id,
+        favoriteCount: backup.favorites.length,
+      });
+      const filename = downloadFavoritesBackup(source, backup);
+      setSuccessMessage(`Favorites backup exported as ${filename}.`);
+      console.info('favorites_export: export completed', {
+        sourceId: source.id,
+        filename,
+      });
+    } catch (exportError) {
+      console.error('favorites_export: export failed', {
+        sourceId: source.id,
+        error: exportError,
+      });
+      setError(
+        exportError instanceof MemoriaVaultApiError
+          ? exportError.message
+          : 'Could not export favorites backup. Try again, or choose a different downloads location in your browser.',
+      );
     } finally {
+      favoritesBackupInFlightRef.current = false;
       setIsBackingUpFavorites(false);
+      setBackingUpFavoritesSourceId(null);
     }
   }
 
@@ -1207,7 +1289,9 @@ export function SettingsPage({
                     onClick={() => void handleBackupFavorites(source)}
                     type="button"
                   >
-                    Export Favorites
+                    {backingUpFavoritesSourceId === source.id
+                      ? 'Exporting…'
+                      : 'Export Favorites'}
                   </button>
 
                   <button
