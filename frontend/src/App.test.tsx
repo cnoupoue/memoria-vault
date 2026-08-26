@@ -12,6 +12,7 @@ import type {
   FlashbackResponse,
   Memory,
   MemoryDetail,
+  MemorySortOrder,
   MemorySource,
 } from './api/types';
 import App from './App';
@@ -78,6 +79,7 @@ const getTimelineYearsMock = vi.mocked(getTimelineYears);
 const removeMemoryFavoriteMock = vi.mocked(removeMemoryFavorite);
 
 beforeEach(() => {
+  window.localStorage.clear();
   getDiagnosticsMock.mockResolvedValue({
     appVersion: '0.1.0',
     platform: null,
@@ -252,6 +254,47 @@ function mockArchiveMemories(memories: Memory[]) {
     totalPages: memories.length === 0 ? 0 : 1,
   });
   mockMemoryDetails(memories);
+}
+
+function mockSortableArchiveMemories(
+  newestFirstMemories: Memory[],
+  oldestFirstMemories: Memory[],
+) {
+  getMemorySourcesMock.mockResolvedValue([buildSource()]);
+  getTimelineYearsMock.mockResolvedValue([
+    { year: 2026, memoryCount: newestFirstMemories.length },
+  ]);
+  getMemoriesMock.mockImplementation(
+    (
+      _year?: number,
+      _month?: number,
+      page = 0,
+      size = 48,
+      sortOrder: MemorySortOrder = 'NEWEST_FIRST',
+    ) => {
+      const content =
+        sortOrder === 'OLDEST_FIRST'
+          ? oldestFirstMemories
+          : newestFirstMemories;
+
+      return Promise.resolve({
+        content,
+        page,
+        size,
+        totalElements: content.length,
+        totalPages: content.length === 0 ? 0 : 1,
+      });
+    },
+  );
+  mockMemoryDetails([...newestFirstMemories, ...oldestFirstMemories]);
+}
+
+function memoryCardDates() {
+  return screen
+    .getAllByRole('button', { name: /Open Memory from/ })
+    .map((button) =>
+      button.getAttribute('aria-label')?.replace('Open Memory from ', ''),
+    );
 }
 
 function viewer() {
@@ -477,6 +520,246 @@ describe('App video preview fallback', () => {
   });
 });
 
+describe('App memory sorting', () => {
+  it('loads memories newest first by default and switches immediately both ways', async () => {
+    const user = userEvent.setup();
+    const newestFirst = [
+      buildMemory({ id: 'newest', capturedAt: '2026-03-01' }),
+      buildMemory({ id: 'oldest', capturedAt: '2026-01-01' }),
+    ];
+    const oldestFirst = [...newestFirst].reverse();
+
+    mockSortableArchiveMemories(newestFirst, oldestFirst);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(memoryCardDates()).toEqual(['2026-03-01', '2026-01-01']);
+    });
+    expect(getMemoriesMock).toHaveBeenCalledWith(
+      2026,
+      undefined,
+      0,
+      48,
+      'NEWEST_FIRST',
+    );
+
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Sort memories' }),
+      'OLDEST_FIRST',
+    );
+
+    await waitFor(() => {
+      expect(memoryCardDates()).toEqual(['2026-01-01', '2026-03-01']);
+    });
+    expect(getMemoriesMock).toHaveBeenLastCalledWith(
+      2026,
+      undefined,
+      0,
+      48,
+      'OLDEST_FIRST',
+    );
+
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Sort memories' }),
+      'NEWEST_FIRST',
+    );
+
+    await waitFor(() => {
+      expect(memoryCardDates()).toEqual(['2026-03-01', '2026-01-01']);
+    });
+    expect(getMemoriesMock).toHaveBeenLastCalledWith(
+      2026,
+      undefined,
+      0,
+      48,
+      'NEWEST_FIRST',
+    );
+  });
+
+  it('persists the selected memory sort order between sessions', async () => {
+    const user = userEvent.setup();
+    const newestFirst = [
+      buildMemory({ id: 'newest', capturedAt: '2026-03-01' }),
+      buildMemory({ id: 'oldest', capturedAt: '2026-01-01' }),
+    ];
+    const oldestFirst = [...newestFirst].reverse();
+
+    mockSortableArchiveMemories(newestFirst, oldestFirst);
+
+    const { unmount } = render(<App />);
+
+    await user.selectOptions(
+      await screen.findByRole('combobox', { name: 'Sort memories' }),
+      'OLDEST_FIRST',
+    );
+
+    await waitFor(() => {
+      expect(window.localStorage.getItem('memoriaVault.memorySortOrder')).toBe(
+        'OLDEST_FIRST',
+      );
+    });
+
+    unmount();
+    getMemoriesMock.mockClear();
+
+    render(<App />);
+
+    expect(
+      await screen.findByRole('combobox', { name: 'Sort memories' }),
+    ).toHaveValue('OLDEST_FIRST');
+    await waitFor(() => {
+      expect(getMemoriesMock).toHaveBeenCalledWith(
+        2026,
+        undefined,
+        0,
+        48,
+        'OLDEST_FIRST',
+      );
+    });
+  });
+
+  it('passes the selected sort order to Favorites', async () => {
+    const user = userEvent.setup();
+    const favorites = [
+      buildMemory({
+        id: 'oldest-favorite',
+        capturedAt: '2026-01-01',
+        isFavorite: true,
+        favoritedAt: '2026-07-18T09:00:00Z',
+      }),
+      buildMemory({
+        id: 'newest-favorite',
+        capturedAt: '2026-03-01',
+        isFavorite: true,
+        favoritedAt: '2026-07-18T10:00:00Z',
+      }),
+    ];
+
+    getMemorySourcesMock.mockResolvedValue([buildSource()]);
+    getTimelineYearsMock.mockResolvedValue([{ year: 2026, memoryCount: 2 }]);
+    getFavoriteMemoriesMock.mockImplementation(
+      (page = 0, size = 48, sortOrder = 'NEWEST_FIRST') =>
+        Promise.resolve({
+          content:
+            sortOrder === 'OLDEST_FIRST' ? favorites : [...favorites].reverse(),
+          page,
+          size,
+          totalElements: favorites.length,
+          totalPages: 1,
+        }),
+    );
+    mockMemoryDetails(favorites);
+
+    render(<App />);
+
+    await user.selectOptions(
+      await screen.findByRole('combobox', { name: 'Sort memories' }),
+      'OLDEST_FIRST',
+    );
+    await user.click(screen.getByRole('button', { name: 'Favorites' }));
+
+    await waitFor(() => {
+      expect(getFavoriteMemoriesMock).toHaveBeenLastCalledWith(
+        0,
+        48,
+        'OLDEST_FIRST',
+      );
+    });
+    expect(memoryCardDates()).toEqual(['2026-01-01', '2026-03-01']);
+  });
+
+  it('keeps paginated loading globally ordered by requesting the next page with the selected order', async () => {
+    const user = userEvent.setup();
+    const pageOne = [
+      buildMemory({ id: 'oldest-page-one', capturedAt: '2026-01-01' }),
+      buildMemory({
+        id: 'newest-page-one',
+        capturedAt: '2026-01-02',
+        mediaType: 'VIDEO',
+      }),
+    ];
+    const pageTwo = [buildMemory({ id: 'page-two', capturedAt: '2026-01-03' })];
+
+    getMemorySourcesMock.mockResolvedValue([buildSource()]);
+    getTimelineYearsMock.mockResolvedValue([{ year: 2026, memoryCount: 3 }]);
+    getMemoriesMock.mockImplementation(
+      (
+        _year?: number,
+        _month?: number,
+        page = 0,
+        size = 48,
+        sortOrder: MemorySortOrder = 'NEWEST_FIRST',
+      ) =>
+        Promise.resolve({
+          content:
+            page === 0 && sortOrder === 'NEWEST_FIRST'
+              ? [...pageOne].reverse()
+              : page === 0
+                ? pageOne
+                : pageTwo,
+          page,
+          size,
+          totalElements: 3,
+          totalPages: 2,
+        }),
+    );
+    mockMemoryDetails([...pageOne, ...pageTwo]);
+
+    render(<App />);
+
+    await user.selectOptions(
+      await screen.findByRole('combobox', { name: 'Sort memories' }),
+      'OLDEST_FIRST',
+    );
+    await screen.findByRole('button', { name: 'Load more' });
+    await user.click(screen.getByRole('button', { name: 'Load more' }));
+
+    await waitFor(() => {
+      expect(getMemoriesMock).toHaveBeenLastCalledWith(
+        2026,
+        undefined,
+        1,
+        48,
+        'OLDEST_FIRST',
+      );
+    });
+    expect(memoryCardDates()).toEqual([
+      '2026-01-01',
+      '2026-01-02',
+      '2026-01-03',
+    ]);
+  });
+
+  it('keeps viewer navigation in the displayed sorted order', async () => {
+    const user = userEvent.setup();
+    const newestFirst = [
+      buildMemory({ id: 'newest', capturedAt: '2026-03-01' }),
+      buildMemory({ id: 'oldest', capturedAt: '2026-01-01' }),
+    ];
+    const oldestFirst = [...newestFirst].reverse();
+
+    mockSortableArchiveMemories(newestFirst, oldestFirst);
+
+    render(<App />);
+
+    await user.selectOptions(
+      await screen.findByRole('combobox', { name: 'Sort memories' }),
+      'OLDEST_FIRST',
+    );
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Open Memory from 2026-01-01',
+      }),
+    );
+    await user.click(viewer().getByRole('button', { name: 'Next memory' }));
+
+    await waitFor(() => {
+      expect(viewer().getByText('2026-03-01')).toBeInTheDocument();
+    });
+  });
+});
+
 describe('App favorites', () => {
   it('loads favorite memories from the Favorites page', async () => {
     const user = userEvent.setup();
@@ -511,7 +794,7 @@ describe('App favorites', () => {
       await screen.findByRole('heading', { name: 'Favorites' }),
     ).toBeInTheDocument();
     expect(screen.getByAltText('Memory from 2026-02-03')).toBeInTheDocument();
-    expect(getFavoriteMemoriesMock).toHaveBeenCalledWith(0, 48);
+    expect(getFavoriteMemoriesMock).toHaveBeenCalledWith(0, 48, 'NEWEST_FIRST');
   });
 
   it('shows the empty Favorites state', async () => {

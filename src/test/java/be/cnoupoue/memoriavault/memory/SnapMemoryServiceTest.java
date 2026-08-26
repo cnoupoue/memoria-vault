@@ -39,13 +39,15 @@ class SnapMemoryServiceTest {
     when(snapMemoryRepository.findAll(any(Pageable.class)))
         .thenReturn(new PageImpl<>(List.of(memory), PageRequest.of(0, 100), 1));
 
-    var response = service.findAll(null, null, -5, 500);
+    var response = service.findAll(null, null, -5, 500, MemorySortOrder.NEWEST_FIRST);
 
     verify(snapMemoryRepository).findAll(pageableCaptor.capture());
     assertThat(pageableCaptor.getValue().getPageNumber()).isZero();
     assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(100);
     assertThat(pageableCaptor.getValue().getSort().getOrderFor("capturedAt").isDescending())
         .isTrue();
+    assertThat(pageableCaptor.getValue().getSort().getOrderFor("id").isDescending()).isTrue();
+    assertThat(pageableCaptor.getValue().getSort().getOrderFor("createdAt")).isNull();
     assertThat(response.content()).hasSize(1);
     assertThat(response.content().getFirst().thumbnailUrl())
         .isEqualTo("/api/memories/memory-1/thumbnail");
@@ -61,7 +63,7 @@ class SnapMemoryServiceTest {
     when(snapMemoryRepository.findByCapturedAtStartingWith(any(String.class), any(Pageable.class)))
         .thenReturn(new PageImpl<>(List.of()));
 
-    service.findAll(2024, 2, 0, 60);
+    service.findAll(2024, 2, 0, 60, MemorySortOrder.NEWEST_FIRST);
 
     verify(snapMemoryRepository)
         .findByCapturedAtStartingWith(prefixCaptor.capture(), any(Pageable.class));
@@ -72,15 +74,32 @@ class SnapMemoryServiceTest {
   void rejectsInvalidDateFilters() {
     SnapMemoryService service = new SnapMemoryService(snapMemoryRepository);
 
-    assertThatThrownBy(() -> service.findAll(null, 6, 0, 60))
+    assertThatThrownBy(() -> service.findAll(null, 6, 0, 60, MemorySortOrder.NEWEST_FIRST))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("A month filter requires a year filter.");
-    assertThatThrownBy(() -> service.findAll(1999, null, 0, 60))
+    assertThatThrownBy(() -> service.findAll(1999, null, 0, 60, MemorySortOrder.NEWEST_FIRST))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("Year must be between 2000 and 2100.");
-    assertThatThrownBy(() -> service.findAll(2024, 13, 0, 60))
+    assertThatThrownBy(() -> service.findAll(2024, 13, 0, 60, MemorySortOrder.NEWEST_FIRST))
         .isInstanceOf(IllegalArgumentException.class)
         .hasMessage("Month must be between 1 and 12.");
+  }
+
+  @Test
+  void findsAllOldestFirstByCapturedAtWithStableIdFallback() {
+    SnapMemoryService service = new SnapMemoryService(snapMemoryRepository);
+    ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+
+    when(snapMemoryRepository.findAll(any(Pageable.class))).thenReturn(new PageImpl<>(List.of()));
+
+    service.findAll(null, null, 0, 60, MemorySortOrder.OLDEST_FIRST);
+
+    verify(snapMemoryRepository).findAll(pageableCaptor.capture());
+    assertThat(pageableCaptor.getValue().getSort().getOrderFor("capturedAt").isAscending())
+        .isTrue();
+    assertThat(pageableCaptor.getValue().getSort().getOrderFor("id").isAscending()).isTrue();
+    assertThat(pageableCaptor.getValue().getSort().getOrderFor("lastModifiedAt")).isNull();
+    assertThat(pageableCaptor.getValue().getSort().getOrderFor("createdAt")).isNull();
   }
 
   @Test
@@ -196,20 +215,35 @@ class SnapMemoryServiceTest {
     when(snapMemoryRepository.findFavorites(any(Pageable.class)))
         .thenReturn(new PageImpl<>(List.of(favorite), PageRequest.of(0, 60), 1));
 
-    var response = service.findFavorites(-2, 500);
+    var response = service.findFavorites(-2, 500, MemorySortOrder.NEWEST_FIRST);
 
     verify(snapMemoryRepository).findFavorites(pageableCaptor.capture());
     assertThat(pageableCaptor.getValue().getPageNumber()).isZero();
     assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(100);
     assertThat(pageableCaptor.getValue().getSort().getOrderFor("capturedAt").isDescending())
         .isTrue();
-    assertThat(pageableCaptor.getValue().getSort().getOrderFor("lastModifiedAt").isDescending())
-        .isTrue();
-    assertThat(pageableCaptor.getValue().getSort().getOrderFor("createdAt").isDescending())
-        .isTrue();
+    assertThat(pageableCaptor.getValue().getSort().getOrderFor("id").isDescending()).isTrue();
+    assertThat(pageableCaptor.getValue().getSort().getOrderFor("lastModifiedAt")).isNull();
+    assertThat(pageableCaptor.getValue().getSort().getOrderFor("createdAt")).isNull();
     assertThat(response.content()).hasSize(1);
     assertThat(response.content().getFirst().isFavorite()).isTrue();
     assertThat(response.content().getFirst().favoritedAt()).isEqualTo("2026-07-18T10:15:30Z");
+  }
+
+  @Test
+  void listsFavoritesOldestFirstByCapturedAtWithStableIdFallback() {
+    SnapMemoryService service = new SnapMemoryService(snapMemoryRepository);
+    ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+
+    when(snapMemoryRepository.findFavorites(any(Pageable.class)))
+        .thenReturn(new PageImpl<>(List.of(), PageRequest.of(0, 60), 0));
+
+    service.findFavorites(0, 60, MemorySortOrder.OLDEST_FIRST);
+
+    verify(snapMemoryRepository).findFavorites(pageableCaptor.capture());
+    assertThat(pageableCaptor.getValue().getSort().getOrderFor("capturedAt").isAscending())
+        .isTrue();
+    assertThat(pageableCaptor.getValue().getSort().getOrderFor("id").isAscending()).isTrue();
   }
 
   @Test

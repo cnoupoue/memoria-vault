@@ -28,6 +28,8 @@ export type MemoryPage = {
   totalPages: number;
 };
 
+export type MemorySortOrder = 'NEWEST_FIRST' | 'OLDEST_FIRST';
+
 export type MemoryDetail = {
   id: string;
   capturedAt: string;
