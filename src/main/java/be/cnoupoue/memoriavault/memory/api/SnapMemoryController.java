@@ -2,6 +2,7 @@ package be.cnoupoue.memoriavault.memory.api;
 
 import be.cnoupoue.memoriavault.memory.DeleteMemoryRequest;
 import be.cnoupoue.memoriavault.memory.MemoryDeletionService;
+import be.cnoupoue.memoriavault.memory.MemorySortOrder;
 import be.cnoupoue.memoriavault.memory.SnapMemoryService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -32,14 +33,17 @@ public class SnapMemoryController {
       @RequestParam(required = false) Integer year,
       @RequestParam(required = false) Integer month,
       @RequestParam(defaultValue = "0") int page,
-      @RequestParam(defaultValue = "60") int size) {
-    return snapMemoryService.findAll(year, month, page, size);
+      @RequestParam(defaultValue = "60") int size,
+      @RequestParam(defaultValue = "NEWEST_FIRST") MemorySortOrder sortOrder) {
+    return snapMemoryService.findAll(year, month, page, size, sortOrder);
   }
 
   @GetMapping("/favorites")
   public MemoryPageResponse findFavorites(
-      @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "60") int size) {
-    return snapMemoryService.findFavorites(page, size);
+      @RequestParam(defaultValue = "0") int page,
+      @RequestParam(defaultValue = "60") int size,
+      @RequestParam(defaultValue = "NEWEST_FIRST") MemorySortOrder sortOrder) {
+    return snapMemoryService.findFavorites(page, size, sortOrder);
   }
 
   @GetMapping("/{id}")

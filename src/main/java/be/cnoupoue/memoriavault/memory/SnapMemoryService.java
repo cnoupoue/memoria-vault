@@ -34,17 +34,14 @@ public class SnapMemoryService {
     this.clock = clock;
   }
 
-  public MemoryPageResponse findAll(Integer year, Integer month, int page, int size) {
+  public MemoryPageResponse findAll(
+      Integer year, Integer month, int page, int size, MemorySortOrder sortOrder) {
     validateDateFilter(year, month);
 
     int validatedPage = Math.max(page, 0);
     int validatedSize = Math.clamp(size, 1, MAX_PAGE_SIZE);
 
-    PageRequest pageRequest =
-        PageRequest.of(
-            validatedPage,
-            validatedSize,
-            Sort.by(Sort.Order.desc("capturedAt"), Sort.Order.desc("createdAt")));
+    PageRequest pageRequest = PageRequest.of(validatedPage, validatedSize, memorySort(sortOrder));
 
     Page<SnapMemory> memoryPage;
 
@@ -66,18 +63,11 @@ public class SnapMemoryService {
         memoryPage.getTotalPages());
   }
 
-  public MemoryPageResponse findFavorites(int page, int size) {
+  public MemoryPageResponse findFavorites(int page, int size, MemorySortOrder sortOrder) {
     int validatedPage = Math.max(page, 0);
     int validatedSize = Math.clamp(size, 1, MAX_PAGE_SIZE);
 
-    PageRequest pageRequest =
-        PageRequest.of(
-            validatedPage,
-            validatedSize,
-            Sort.by(
-                Sort.Order.desc("capturedAt"),
-                Sort.Order.desc("lastModifiedAt"),
-                Sort.Order.desc("createdAt")));
+    PageRequest pageRequest = PageRequest.of(validatedPage, validatedSize, memorySort(sortOrder));
 
     Page<SnapMemory> memoryPage = snapMemoryRepository.findFavorites(pageRequest);
     List<MemoryResponse> content = memoryPage.getContent().stream().map(this::toResponse).toList();
@@ -185,6 +175,13 @@ public class SnapMemoryService {
     }
 
     return "%d-%02d".formatted(year, month);
+  }
+
+  private Sort memorySort(MemorySortOrder sortOrder) {
+    Sort.Direction direction =
+        sortOrder == MemorySortOrder.OLDEST_FIRST ? Sort.Direction.ASC : Sort.Direction.DESC;
+
+    return Sort.by(direction, "capturedAt", "id");
   }
 
   private MemoryResponse toResponse(SnapMemory memory) {

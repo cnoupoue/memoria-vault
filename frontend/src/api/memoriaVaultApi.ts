@@ -8,6 +8,7 @@ import type {
   Memory,
   MemoryDetail,
   MemoryPage,
+  MemorySortOrder,
   MemorySource,
   MemoryScanJob,
   CompatibilityPlayback,
@@ -82,10 +83,12 @@ export function getMemories(
   month?: number,
   page = 0,
   size = 48,
+  sortOrder: MemorySortOrder = 'NEWEST_FIRST',
 ): Promise<MemoryPage> {
   const params = new URLSearchParams({
     page: String(page),
     size: String(size),
+    sortOrder,
   });
 
   if (year !== undefined) {
@@ -99,10 +102,15 @@ export function getMemories(
   return request<MemoryPage>(`/api/memories?${params.toString()}`);
 }
 
-export function getFavoriteMemories(page = 0, size = 48): Promise<MemoryPage> {
+export function getFavoriteMemories(
+  page = 0,
+  size = 48,
+  sortOrder: MemorySortOrder = 'NEWEST_FIRST',
+): Promise<MemoryPage> {
   const params = new URLSearchParams({
     page: String(page),
     size: String(size),
+    sortOrder,
   });
 
   return request<MemoryPage>(`/api/memories/favorites?${params.toString()}`);

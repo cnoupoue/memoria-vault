@@ -14,6 +14,7 @@ import {
 import type {
   Memory,
   MemoryDetail,
+  MemorySortOrder,
   MemorySource,
   TimelineMonth,
   TimelineYear,
@@ -25,6 +26,8 @@ import { SettingsPage } from './components/SettingsPage';
 
 const PAGE_SIZE = 48;
 const APP_TITLE = 'Memoria Vault';
+const MEMORY_SORT_ORDER_STORAGE_KEY = 'memoriaVault.memorySortOrder';
+const DEFAULT_MEMORY_SORT_ORDER: MemorySortOrder = 'NEWEST_FIRST';
 
 const MONTH_NAMES = [
   'January',
@@ -41,6 +44,16 @@ const MONTH_NAMES = [
   'December',
 ];
 
+function readStoredMemorySortOrder(): MemorySortOrder {
+  const storedValue = window.localStorage.getItem(
+    MEMORY_SORT_ORDER_STORAGE_KEY,
+  );
+
+  return storedValue === 'OLDEST_FIRST' || storedValue === 'NEWEST_FIRST'
+    ? storedValue
+    : DEFAULT_MEMORY_SORT_ORDER;
+}
+
 function App() {
   const [years, setYears] = useState<TimelineYear[]>([]);
   const [months, setMonths] = useState<TimelineMonth[]>([]);
@@ -48,6 +61,9 @@ function App() {
 
   const [selectedYear, setSelectedYear] = useState<number | undefined>();
   const [selectedMonth, setSelectedMonth] = useState<number | undefined>();
+  const [memorySortOrder, setMemorySortOrder] = useState<MemorySortOrder>(
+    readStoredMemorySortOrder,
+  );
 
   const [currentPage, setCurrentPage] = useState(0);
   const [totalMemories, setTotalMemories] = useState(0);
@@ -88,6 +104,10 @@ function App() {
   useEffect(() => {
     document.title = APP_TITLE;
   }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(MEMORY_SORT_ORDER_STORAGE_KEY, memorySortOrder);
+  }, [memorySortOrder]);
 
   const loadSources = useCallback(async () => {
     setIsLoadingSources(true);
@@ -213,8 +233,14 @@ function App() {
       try {
         const data =
           activeView === 'favorites'
-            ? await getFavoriteMemories(0, PAGE_SIZE)
-            : await getMemories(selectedYear, selectedMonth, 0, PAGE_SIZE);
+            ? await getFavoriteMemories(0, PAGE_SIZE, memorySortOrder)
+            : await getMemories(
+                selectedYear,
+                selectedMonth,
+                0,
+                PAGE_SIZE,
+                memorySortOrder,
+              );
 
         if (requestVersion !== memoryRequestVersion.current) {
           return;
@@ -239,6 +265,7 @@ function App() {
   }, [
     selectedYear,
     selectedMonth,
+    memorySortOrder,
     activeView,
     archiveRefreshVersion,
     hasConfiguredSources,
@@ -258,8 +285,14 @@ function App() {
     try {
       const data =
         activeView === 'favorites'
-          ? await getFavoriteMemories(nextPage, PAGE_SIZE)
-          : await getMemories(selectedYear, selectedMonth, nextPage, PAGE_SIZE);
+          ? await getFavoriteMemories(nextPage, PAGE_SIZE, memorySortOrder)
+          : await getMemories(
+              selectedYear,
+              selectedMonth,
+              nextPage,
+              PAGE_SIZE,
+              memorySortOrder,
+            );
 
       setMemories((currentMemories) => [...currentMemories, ...data.content]);
 
@@ -709,13 +742,31 @@ function App() {
                   </h2>
                 </div>
 
-                <p className="memory-count">
-                  {totalMemories.toLocaleString()}{' '}
-                  {activeView === 'favorites' ? 'favorites' : 'memories'}
-                  {hasMoreMemories
-                    ? ` · ${memories.length.toLocaleString()} shown`
-                    : ''}
-                </p>
+                <div className="memory-list-controls">
+                  <label className="sort-control">
+                    <span>Sort</span>
+                    <select
+                      aria-label="Sort memories"
+                      onChange={(event) =>
+                        setMemorySortOrder(
+                          event.target.value as MemorySortOrder,
+                        )
+                      }
+                      value={memorySortOrder}
+                    >
+                      <option value="NEWEST_FIRST">Newest first</option>
+                      <option value="OLDEST_FIRST">Oldest first</option>
+                    </select>
+                  </label>
+
+                  <p className="memory-count">
+                    {totalMemories.toLocaleString()}{' '}
+                    {activeView === 'favorites' ? 'favorites' : 'memories'}
+                    {hasMoreMemories
+                      ? ` · ${memories.length.toLocaleString()} shown`
+                      : ''}
+                  </p>
+                </div>
               </header>
 
               {error && <div className="error-banner">{error}</div>}
