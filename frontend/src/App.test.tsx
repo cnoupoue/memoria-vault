@@ -420,7 +420,7 @@ describe('App footer', () => {
       screen.getByRole('link', {
         name: 'Open source on GitHub, contributions welcome',
       }),
-    ).toHaveAttribute('href', 'https://github.com/cnoupoue/memoriavault');
+    ).toHaveAttribute('href', 'https://github.com/cnoupoue/memoria-vault');
 
     expect(screen.getByRole('link', { name: 'LinkedIn' })).toHaveAttribute(
       'href',
