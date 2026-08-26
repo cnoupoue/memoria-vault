@@ -14,6 +14,7 @@ import be.cnoupoue.memoriavault.memory.SnapMemoryRepository;
 import be.cnoupoue.memoriavault.memory.SnapMemoryType;
 import be.cnoupoue.memoriavault.source.MemorySource;
 import be.cnoupoue.memoriavault.source.MemorySourceRepository;
+import jakarta.persistence.EntityManager;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -36,6 +37,8 @@ import org.springframework.test.web.servlet.MockMvc;
 class MemorySourceAvailabilityApiTests {
 
   @Autowired private MockMvc mockMvc;
+
+  @Autowired private EntityManager entityManager;
 
   @Autowired private MemorySourceRepository memorySourceRepository;
 
@@ -237,12 +240,158 @@ class MemorySourceAvailabilityApiTests {
     org.assertj.core.api.Assertions.assertThat(snapMemoryRepository.countBySourceId(second.getId()))
         .isEqualTo(1);
 
+    entityManager.clear();
+
     mockMvc.perform(delete("/api/sources/{id}", second.getId())).andExpect(status().isNoContent());
 
     org.assertj.core.api.Assertions.assertThat(memorySourceRepository.existsById(second.getId()))
         .isFalse();
     org.assertj.core.api.Assertions.assertThat(snapMemoryRepository.countBySourceId(second.getId()))
         .isZero();
+  }
+
+  @Test
+  void deletingDuplicateSourcesAcrossPersistenceBoundariesLeavesNoSelectedOrphans()
+      throws Exception {
+    Path duplicatePath = temporaryDirectory.resolve("duplicate-restart-path");
+    MemorySource first = saveSource("source-restart-first", duplicatePath);
+    MemorySource second = saveSource("source-restart-second", duplicatePath);
+    saveMemory("memory-restart-first", first.getId());
+    saveMemory("memory-restart-second", second.getId());
+    memoryScanJobRepository.save(
+        new be.cnoupoue.memoriavault.indexing.MemoryScanJob(
+            "scan-restart-first", first.getId(), Instant.now().toString()));
+    memoryScanJobRepository.save(
+        new be.cnoupoue.memoriavault.indexing.MemoryScanJob(
+            "scan-restart-second", second.getId(), Instant.now().toString()));
+
+    mockMvc.perform(delete("/api/sources/{id}", first.getId())).andExpect(status().isNoContent());
+
+    entityManager.clear();
+
+    org.assertj.core.api.Assertions.assertThat(memorySourceRepository.existsById(first.getId()))
+        .isFalse();
+    org.assertj.core.api.Assertions.assertThat(memorySourceRepository.existsById(second.getId()))
+        .isTrue();
+    org.assertj.core.api.Assertions.assertThat(snapMemoryRepository.countBySourceId(first.getId()))
+        .isZero();
+    org.assertj.core.api.Assertions.assertThat(snapMemoryRepository.countBySourceId(second.getId()))
+        .isEqualTo(1);
+    org.assertj.core.api.Assertions.assertThat(
+            memoryScanJobRepository.countBySourceId(first.getId()))
+        .isZero();
+    org.assertj.core.api.Assertions.assertThat(
+            memoryScanJobRepository.countBySourceId(second.getId()))
+        .isEqualTo(1);
+
+    mockMvc.perform(delete("/api/sources/{id}", second.getId())).andExpect(status().isNoContent());
+
+    entityManager.clear();
+
+    org.assertj.core.api.Assertions.assertThat(memorySourceRepository.existsById(second.getId()))
+        .isFalse();
+    org.assertj.core.api.Assertions.assertThat(snapMemoryRepository.countBySourceId(second.getId()))
+        .isZero();
+    org.assertj.core.api.Assertions.assertThat(
+            memoryScanJobRepository.countBySourceId(second.getId()))
+        .isZero();
+  }
+
+  @Test
+  void favoritesBackupDeleteAndPartialRestoreDoNotAffectUnrelatedSource() throws Exception {
+    MemorySource removedSource = saveSource("source-favorites-removed", temporaryDirectory);
+    MemorySource activeSource = saveSource("source-favorites-active", temporaryDirectory);
+    saveFavoriteMemory(
+        "memory-removed-favorite",
+        removedSource.getId(),
+        "shared-external",
+        temporaryDirectory.resolve("removed.jpg"));
+    saveFavoriteMemory(
+        "memory-active-existing-favorite",
+        activeSource.getId(),
+        "existing-active-external",
+        temporaryDirectory.resolve("active-existing.jpg"));
+    saveMemory(
+        "memory-active-restorable",
+        activeSource.getId(),
+        "shared-external",
+        temporaryDirectory.resolve("active-restorable.jpg"));
+
+    String exportedBackup =
+        mockMvc
+            .perform(get("/api/sources/{id}/favorites-backup", removedSource.getId()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.favorites.length()").value(1))
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+
+    mockMvc
+        .perform(delete("/api/sources/{id}", removedSource.getId()))
+        .andExpect(status().isNoContent());
+
+    entityManager.clear();
+
+    org.assertj.core.api.Assertions.assertThat(
+            snapMemoryRepository.countBySourceId(removedSource.getId()))
+        .isZero();
+    org.assertj.core.api.Assertions.assertThat(
+            snapMemoryRepository.countBySourceIdAndIsFavoriteTrue(activeSource.getId()))
+        .isEqualTo(1);
+
+    mockMvc
+        .perform(
+            post("/api/sources/{id}/favorites-backup/restore", activeSource.getId())
+                .contentType("application/json")
+                .content(
+                    """
+                    {
+                      "version": 1,
+                      "exportedAt": "2026-07-18T00:00:00Z",
+                      "sourceId": "%s",
+                      "favorites": [
+                        {
+                          "memoryId": "memory-removed-favorite",
+                          "externalMemoryId": "shared-external",
+                          "capturedAt": "2020-06-10",
+                          "mediaType": "IMAGE",
+                          "mainPath": "%s",
+                          "favoritedAt": "2026-07-18T00:00:00Z"
+                        },
+                        {
+                          "memoryId": "missing-memory",
+                          "externalMemoryId": "missing-external",
+                          "capturedAt": "2020-01-01",
+                          "mediaType": "IMAGE",
+                          "mainPath": "%s",
+                          "favoritedAt": null
+                        }
+                      ]
+                    }
+                    """
+                        .formatted(
+                            removedSource.getId(),
+                            temporaryDirectory.resolve("removed.jpg"),
+                            temporaryDirectory.resolve("missing.jpg"))))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.totalFavorites").value(2))
+        .andExpect(jsonPath("$.restorable").value(1))
+        .andExpect(jsonPath("$.restored").value(1))
+        .andExpect(jsonPath("$.alreadyFavorite").value(0))
+        .andExpect(jsonPath("$.notFound").value(1))
+        .andExpect(jsonPath("$.skipped").value(1));
+
+    entityManager.clear();
+
+    org.assertj.core.api.Assertions.assertThat(
+            snapMemoryRepository.countBySourceIdAndIsFavoriteTrue(activeSource.getId()))
+        .isEqualTo(2);
+    org.assertj.core.api.Assertions.assertThat(
+            memorySourceRepository.existsById(removedSource.getId()))
+        .isFalse();
+    org.assertj.core.api.Assertions.assertThat(
+            memorySourceRepository.existsById(activeSource.getId()))
+        .isTrue();
   }
 
   @Test
@@ -289,17 +438,21 @@ class MemorySourceAvailabilityApiTests {
   }
 
   private void saveMemory(String id, String sourceId) {
-    saveMemory(id, sourceId, temporaryDirectory.resolve("existing.jpg"));
+    saveMemory(id, sourceId, id + "-external", temporaryDirectory.resolve("existing.jpg"));
   }
 
   private void saveMemory(String id, String sourceId, Path mediaPath) {
+    saveMemory(id, sourceId, id + "-external", mediaPath);
+  }
+
+  private void saveMemory(String id, String sourceId, String externalMemoryId, Path mediaPath) {
     String now = Instant.now().toString();
 
     snapMemoryRepository.save(
         new SnapMemory(
             id,
             sourceId,
-            id + "-external",
+            externalMemoryId,
             "2020-06-10",
             SnapMemoryType.IMAGE,
             mediaPath.toString(),
@@ -308,5 +461,24 @@ class MemorySourceAvailabilityApiTests {
             now,
             now,
             now));
+  }
+
+  private void saveFavoriteMemory(String id, String sourceId, String externalMemoryId, Path path) {
+    String now = Instant.now().toString();
+    SnapMemory memory =
+        new SnapMemory(
+            id,
+            sourceId,
+            externalMemoryId,
+            "2020-06-10",
+            SnapMemoryType.IMAGE,
+            path.toString(),
+            null,
+            123,
+            now,
+            now,
+            now);
+    memory.markFavorite("2026-07-18T00:00:00Z");
+    snapMemoryRepository.save(memory);
   }
 }

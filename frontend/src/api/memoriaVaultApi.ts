@@ -141,6 +141,25 @@ export function openOriginalFile(memoryId: string): Promise<OriginalFileOpen> {
   });
 }
 
+export function shareOriginalFile(memoryId: string): Promise<OriginalFileOpen> {
+  return request<OriginalFileOpen>(`/api/memories/${memoryId}/share-original`, {
+    method: 'POST',
+  });
+}
+
+export type ApplicationDataReset = {
+  reset: boolean;
+  restartRequired: boolean;
+  removedLocations: string[];
+  message: string;
+};
+
+export function resetApplicationData(): Promise<ApplicationDataReset> {
+  return request<ApplicationDataReset>('/api/settings/reset-application-data', {
+    method: 'POST',
+  });
+}
+
 export function getTodayFlashbacks(): Promise<FlashbackResponse> {
   return request<FlashbackResponse>('/api/flashbacks/today');
 }

@@ -1,4 +1,5 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Diagnostics, FavoritesBackup, MemorySource } from '../api/types';
@@ -15,6 +16,7 @@ vi.mock('../api/memoriaVaultApi', () => ({
   getMemorySourceAvailability: vi.fn(),
   getMemorySources: vi.fn(),
   previewMemorySourceFavoritesRestore: vi.fn(),
+  resetApplicationData: vi.fn(),
   restoreMemorySourceFavoritesBackup: vi.fn(),
   selectMemorySourceFolder: vi.fn(),
   startMemorySourceScan: vi.fn(),
@@ -45,6 +47,7 @@ import {
   getMemorySourceAvailability,
   getMemorySources,
   previewMemorySourceFavoritesRestore,
+  resetApplicationData,
   restoreMemorySourceFavoritesBackup,
   selectMemorySourceFolder,
   MemoriaVaultApiError,
@@ -62,6 +65,7 @@ const getMemorySourceAvailabilityMock = vi.mocked(getMemorySourceAvailability);
 const previewMemorySourceFavoritesRestoreMock = vi.mocked(
   previewMemorySourceFavoritesRestore,
 );
+const resetApplicationDataMock = vi.mocked(resetApplicationData);
 const restoreMemorySourceFavoritesBackupMock = vi.mocked(
   restoreMemorySourceFavoritesBackup,
 );
@@ -131,6 +135,132 @@ function buildDiagnostics(
 }
 
 describe('SettingsPage', () => {
+  it('shows a discreet reset application data action', async () => {
+    getMemorySourcesMock.mockResolvedValue([]);
+
+    render(<SettingsPage onSourceScanned={vi.fn()} />);
+
+    expect(
+      await screen.findByRole('button', { name: 'Reset application data' }),
+    ).toBeInTheDocument();
+  });
+
+  it('requires confirmation before resetting application data', async () => {
+    const user = userEvent.setup();
+    getMemorySourcesMock.mockResolvedValue([]);
+
+    render(<SettingsPage onSourceScanned={vi.fn()} />);
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Reset application data' }),
+    );
+
+    expect(screen.getByRole('dialog')).toHaveTextContent(
+      'Reset Memoria Vault?',
+    );
+    expect(resetApplicationDataMock).not.toHaveBeenCalled();
+  });
+
+  it('does not reset application data when confirmation is cancelled', async () => {
+    const user = userEvent.setup();
+    getMemorySourcesMock.mockResolvedValue([]);
+
+    render(<SettingsPage onSourceScanned={vi.fn()} />);
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Reset application data' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(resetApplicationDataMock).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('resets application data and reports fresh state', async () => {
+    const user = userEvent.setup();
+    const onApplicationDataReset = vi.fn();
+    getMemorySourcesMock.mockResolvedValue([buildSource({})]);
+    resetApplicationDataMock.mockResolvedValue({
+      reset: true,
+      restartRequired: false,
+      removedLocations: [],
+      message:
+        'Application data was reset. Your original photos and videos were not deleted.',
+    });
+
+    render(
+      <SettingsPage
+        onApplicationDataReset={onApplicationDataReset}
+        onSourceScanned={vi.fn()}
+      />,
+    );
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Reset application data' }),
+    );
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Reset application data',
+      }),
+    );
+
+    expect(resetApplicationDataMock).toHaveBeenCalledTimes(1);
+    expect(
+      await screen.findByText(
+        'Application data was reset. Your original photos and videos were not deleted.',
+      ),
+    ).toBeInTheDocument();
+    expect(onApplicationDataReset).toHaveBeenCalledTimes(1);
+  });
+
+  it('encourages favorites backup before reset', async () => {
+    const user = userEvent.setup();
+    getMemorySourcesMock.mockResolvedValue([
+      buildSource({ id: 'source-1', favoriteCount: 3 }),
+    ]);
+
+    render(<SettingsPage onSourceScanned={vi.fn()} />);
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Reset application data' }),
+    );
+
+    expect(
+      screen.getByText(/You currently have 3 favorites/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Export favorites first' }),
+    ).toBeInTheDocument();
+  });
+
+  it('shows a clear reset failure message', async () => {
+    const user = userEvent.setup();
+    getMemorySourcesMock.mockResolvedValue([]);
+    resetApplicationDataMock.mockRejectedValue(
+      new MemoriaVaultApiError({
+        status: 422,
+        code: 'APPLICATION_RESET_FAILED',
+        message: 'Application data could not be reset.',
+        timestamp: '2026-08-26T00:00:00Z',
+      }),
+    );
+
+    render(<SettingsPage onSourceScanned={vi.fn()} />);
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Reset application data' }),
+    );
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Reset application data',
+      }),
+    );
+
+    expect(
+      await screen.findByText('Application data could not be reset.'),
+    ).toBeInTheDocument();
+  });
+
   it('shows the folder picker action in source creation', async () => {
     getMemorySourcesMock.mockResolvedValue([]);
 

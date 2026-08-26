@@ -848,6 +848,10 @@ a:focus-visible {
 }
 
 .memory-viewer-footer {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
   padding: 14px 18px;
   color: white;
   background: rgb(18 18 20 / 94%);
@@ -861,6 +865,37 @@ a:focus-visible {
 .memory-viewer-footer span {
   color: #b9b9c0;
   font-size: 0.84rem;
+}
+
+.memory-viewer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.memory-viewer-action-button {
+  display: inline-flex;
+  gap: 7px;
+  align-items: center;
+  min-height: 34px;
+  padding: 7px 11px;
+  color: white;
+  cursor: pointer;
+  background: rgb(255 255 255 / 9%);
+  border: 1px solid rgb(255 255 255 / 18%);
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  transition: background 160ms ease;
+}
+
+.memory-viewer-action-button:hover {
+  background: rgb(255 255 255 / 15%);
+}
+
+.memory-viewer-action-status {
+  color: #dfdfeb;
 }
 
 .memory-viewer-state {
@@ -924,6 +959,45 @@ a:focus-visible {
 
 .settings-section-secondary {
   opacity: 0.92;
+}
+
+.settings-reset-section {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 18px;
+  padding: 12px 4px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.settings-reset-section h3 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.settings-reset-section p {
+  max-width: 620px;
+  margin: 3px 0 0;
+  color: var(--subtle);
+  font-size: 0.82rem;
+}
+
+.reset-link-button {
+  min-height: 34px;
+  padding: 6px 0;
+  color: var(--danger);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.reset-link-button:hover {
+  color: #7f2a2a;
+  text-decoration: underline;
 }
 
 .settings-section-header {
@@ -1208,6 +1282,10 @@ a:focus-visible {
   border: 1px solid var(--line-soft);
   border-radius: var(--radius);
   box-shadow: var(--shadow-soft);
+}
+
+.destructive-dialog {
+  border-color: rgb(163 58 58 / 28%);
 }
 
 .favorites-help-dialog {

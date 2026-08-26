@@ -31,6 +31,7 @@ vi.mock('./api/memoriaVaultApi', () => ({
   getMemorySourceAvailability: vi.fn(),
   getMemorySources: vi.fn(),
   previewMemorySourceFavoritesRestore: vi.fn(),
+  resetApplicationData: vi.fn(),
   restoreMemorySourceFavoritesBackup: vi.fn(),
   selectMemorySourceFolder: vi.fn(),
   getTimelineMonths: vi.fn(),
@@ -51,6 +52,7 @@ import {
   getMemoryDetail,
   getMemorySources,
   getTimelineMonths,
+  resetApplicationData,
   selectMemorySourceFolder,
   startMemorySourceScan,
   getTimelineYears,
@@ -66,6 +68,7 @@ const getMemoriesMock = vi.mocked(getMemories);
 const getMemoryDetailMock = vi.mocked(getMemoryDetail);
 const getMemorySourcesMock = vi.mocked(getMemorySources);
 const getTimelineMonthsMock = vi.mocked(getTimelineMonths);
+const resetApplicationDataMock = vi.mocked(resetApplicationData);
 const selectMemorySourceFolderMock = vi.mocked(selectMemorySourceFolder);
 const startMemorySourceScanMock = vi.mocked(startMemorySourceScan);
 const getTimelineYearsMock = vi.mocked(getTimelineYears);
@@ -417,7 +420,7 @@ describe('App footer', () => {
       screen.getByRole('link', {
         name: 'Open source on GitHub, contributions welcome',
       }),
-    ).toHaveAttribute('href', 'https://github.com/cnoupoue/memoriavault');
+    ).toHaveAttribute('href', 'https://github.com/cnoupoue/memoria-vault');
 
     expect(screen.getByRole('link', { name: 'LinkedIn' })).toHaveAttribute(
       'href',
@@ -915,5 +918,39 @@ describe('App viewer navigation', () => {
       'src',
       '/api/memories/flashback-second/media',
     );
+  });
+
+  it('returns to onboarding after resetting application data from settings', async () => {
+    const user = userEvent.setup();
+    getMemorySourcesMock.mockResolvedValue([buildSource()]);
+    getTimelineYearsMock.mockResolvedValue([{ year: 2026, memoryCount: 1 }]);
+    resetApplicationDataMock.mockResolvedValue({
+      reset: true,
+      restartRequired: false,
+      removedLocations: [],
+      message:
+        'Application data was reset. Your original photos and videos were not deleted.',
+    });
+
+    render(<App />);
+
+    await user.click(await screen.findByRole('button', { name: 'Settings' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Reset application data' }),
+    );
+    await user.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Reset application data',
+      }),
+    );
+
+    expect(
+      await screen.findByText('Welcome to Memoria Vault'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Add an exported archive folder to build your private local archive.',
+      ),
+    ).toBeInTheDocument();
   });
 });

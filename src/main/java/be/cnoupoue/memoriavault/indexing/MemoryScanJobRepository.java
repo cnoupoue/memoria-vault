@@ -9,6 +9,8 @@ public interface MemoryScanJobRepository extends JpaRepository<MemoryScanJob, St
 
   boolean existsBySourceIdAndStatus(String sourceId, String status);
 
+  boolean existsByStatus(String status);
+
   Optional<MemoryScanJob> findTopBySourceIdOrderByStartedAtDesc(String sourceId);
 
   long countBySourceId(String sourceId);
