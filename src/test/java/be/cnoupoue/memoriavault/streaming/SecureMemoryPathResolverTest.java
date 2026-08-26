@@ -51,6 +51,52 @@ class SecureMemoryPathResolverTest {
   }
 
   @Test
+  void resolvesMissingMacosStyleAbsolutePathInsideSourceRootForDeletion() throws Exception {
+    Path sourceRoot = Files.createDirectory(temporaryDirectory.resolve("source"));
+    Path missingFile = sourceRoot.resolve("memories").resolve("memory-main.jpg");
+    SecureMemoryPathResolver resolver = resolverFor(source("source-1", sourceRoot));
+
+    var resolved = resolver.resolveForDeletion("source-1", missingFile.toString());
+
+    assertThat(resolved.exists()).isFalse();
+    assertThat(resolved.path())
+        .isEqualTo(sourceRoot.toRealPath().resolve("memories").resolve("memory-main.jpg"));
+  }
+
+  @Test
+  void resolvesMovedExportPathForWindowsDeletionAfterSourceRootChanges() throws Exception {
+    Path currentRoot = Files.createDirectory(temporaryDirectory.resolve("current"));
+    Path currentMemories = Files.createDirectory(currentRoot.resolve("memories"));
+    Path currentFile = Files.writeString(currentMemories.resolve("memory-main.jpg"), "current");
+    Path oldWindowsStyleLocation =
+        Path.of("C:", "Users", "Cameron", "Downloads", "memories", "memory-main.jpg");
+    SecureMemoryPathResolver resolver = resolverFor(source("source-1", currentRoot));
+
+    var resolved = resolver.resolveForDeletion("source-1", oldWindowsStyleLocation.toString());
+
+    assertThat(resolved.exists()).isTrue();
+    assertThat(resolved.path()).isEqualTo(currentFile.toRealPath());
+  }
+
+  @Test
+  void rejectsMissingDeletionPathOutsideSourceRoot() throws Exception {
+    Path sourceRoot = Files.createDirectory(temporaryDirectory.resolve("source"));
+    Path outside = temporaryDirectory.resolve("outside.jpg");
+    SecureMemoryPathResolver resolver = resolverFor(source("source-1", sourceRoot));
+
+    assertThatThrownBy(() -> resolver.resolveForDeletion("source-1", outside.toString()))
+        .isInstanceOf(MediaStreamingException.class)
+        .satisfies(
+            exception ->
+                assertThat(((MediaStreamingException) exception).getStatus())
+                    .isEqualTo(HttpStatus.FORBIDDEN))
+        .satisfies(
+            exception ->
+                assertThat(((MediaStreamingException) exception).getCode())
+                    .isEqualTo("MEDIA_PATH_REJECTED"));
+  }
+
+  @Test
   void rejectsTraversalOutsideSourceRoot() throws Exception {
     Path sourceRoot = Files.createDirectory(temporaryDirectory.resolve("source"));
     Path outside = Files.writeString(temporaryDirectory.resolve("outside.jpg"), "outside");

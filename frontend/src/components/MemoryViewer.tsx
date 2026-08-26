@@ -24,6 +24,7 @@ type MemoryViewerProps = {
   onPrevious?: () => void;
   onNext?: () => void;
   onToggleFavorite?: (memoryId: string, nextFavorite: boolean) => void;
+  onDelete?: (memoryId: string) => Promise<void>;
 };
 
 export function MemoryViewer({
@@ -36,6 +37,7 @@ export function MemoryViewer({
   onPrevious,
   onNext,
   onToggleFavorite,
+  onDelete,
 }: MemoryViewerProps) {
   const [mediaErrorMemoryId, setMediaErrorMemoryId] = useState<string | null>(
     null,
@@ -53,6 +55,9 @@ export function MemoryViewer({
     isPreparing: false,
     openOriginalStatus: null,
   });
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const viewerRef = useRef<HTMLElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -78,6 +83,12 @@ export function MemoryViewer({
       }
 
       if (event.key === 'Escape') {
+        if (isDeleteConfirmOpen) {
+          setIsDeleteConfirmOpen(false);
+          setDeleteError(null);
+          return;
+        }
+
         onClose();
         return;
       }
@@ -136,6 +147,7 @@ export function MemoryViewer({
     hasMediaError,
     hasNext,
     hasPrevious,
+    isDeleteConfirmOpen,
     isOpen,
     memory,
     onClose,
@@ -148,6 +160,12 @@ export function MemoryViewer({
       viewerRef.current?.focus();
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    setIsDeleteConfirmOpen(false);
+    setIsDeleting(false);
+    setDeleteError(null);
+  }, [memory?.id]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -283,6 +301,23 @@ export function MemoryViewer({
         memoryId,
         openOriginalStatus: getOriginalFileActionErrorMessage(error),
       }));
+    }
+  }
+
+  async function handleDeleteConfirmed(memoryId: string) {
+    if (!onDelete) {
+      return;
+    }
+
+    setIsDeleting(true);
+    setDeleteError(null);
+
+    try {
+      await onDelete(memoryId);
+      setIsDeleteConfirmOpen(false);
+    } catch (error) {
+      setDeleteError(getDeleteMemoryErrorMessage(error));
+      setIsDeleting(false);
     }
   }
 
@@ -454,8 +489,72 @@ export function MemoryViewer({
                   <span aria-hidden="true">↗</span>
                   <span>Share</span>
                 </button>
+                {onDelete && (
+                  <button
+                    className="memory-viewer-action-button memory-viewer-delete-button"
+                    onClick={() => {
+                      setDeleteError(null);
+                      setIsDeleteConfirmOpen(true);
+                    }}
+                    title="Delete memory"
+                    type="button"
+                  >
+                    <span aria-hidden="true">×</span>
+                    <span>Delete</span>
+                  </button>
+                )}
               </div>
             </footer>
+
+            {isDeleteConfirmOpen && (
+              <div
+                aria-modal="true"
+                className="confirmation-backdrop"
+                onMouseDown={() => {
+                  if (!isDeleting) {
+                    setIsDeleteConfirmOpen(false);
+                    setDeleteError(null);
+                  }
+                }}
+                role="dialog"
+              >
+                <section
+                  aria-labelledby="delete-memory-title"
+                  className="confirmation-dialog destructive-dialog"
+                  onMouseDown={(event) => event.stopPropagation()}
+                >
+                  <h3 id="delete-memory-title">Delete this memory?</h3>
+                  <p>
+                    This will permanently delete the original file from your
+                    computer. This action cannot be undone.
+                  </p>
+                  {deleteError && (
+                    <p className="destructive-error">{deleteError}</p>
+                  )}
+                  <div className="confirmation-actions">
+                    <button
+                      className="secondary-button"
+                      disabled={isDeleting}
+                      onClick={() => {
+                        setIsDeleteConfirmOpen(false);
+                        setDeleteError(null);
+                      }}
+                      type="button"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="danger-button"
+                      disabled={isDeleting}
+                      onClick={() => void handleDeleteConfirmed(memory.id)}
+                      type="button"
+                    >
+                      {isDeleting ? 'Deleting…' : 'Delete permanently'}
+                    </button>
+                  </div>
+                </section>
+              </div>
+            )}
           </>
         )}
       </section>
@@ -528,4 +627,12 @@ function getOriginalFileActionErrorMessage(error: unknown) {
   }
 
   return 'The original file cannot be found or opened.';
+}
+
+function getDeleteMemoryErrorMessage(error: unknown) {
+  if (error instanceof MemoriaVaultApiError) {
+    return error.message;
+  }
+
+  return 'This memory could not be deleted. The original file may be locked or unavailable.';
 }

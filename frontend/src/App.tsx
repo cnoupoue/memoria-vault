@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { MemoryViewer } from './components/MemoryViewer';
 import {
   addMemoryFavorite,
+  deleteMemory,
   getFavoriteMemories,
   getMemories,
   getMemoryDetail,
@@ -364,6 +365,51 @@ function App() {
       setSelectedMemory(previousSelectedMemory);
       setViewerMemoryIds(previousViewerMemoryIds);
       setError('Could not update Favorites. Try again.');
+    }
+  }
+
+  async function deleteSelectedMemory(memoryId: string) {
+    const previousMemories = memories;
+    const previousSelectedMemory = selectedMemory;
+    const previousViewerMemoryIds = viewerMemoryIds;
+    const previousTotalMemories = totalMemories;
+    const currentViewerIndex = viewerMemoryIds.indexOf(memoryId);
+    const updatedViewerMemoryIds = viewerMemoryIds.filter(
+      (id) => id !== memoryId,
+    );
+    const fallbackViewerMemoryId =
+      currentViewerIndex === -1
+        ? undefined
+        : (viewerMemoryIds[currentViewerIndex + 1] ??
+          viewerMemoryIds[currentViewerIndex - 1]);
+
+    setError(null);
+
+    try {
+      await deleteMemory(memoryId);
+
+      setMemories((currentMemories) =>
+        currentMemories.filter((memory) => memory.id !== memoryId),
+      );
+      setViewerMemoryIds(updatedViewerMemoryIds);
+      setTotalMemories((currentTotal) => Math.max(0, currentTotal - 1));
+      setArchiveRefreshVersion((currentVersion) => currentVersion + 1);
+      void loadSources();
+
+      if (selectedMemory?.id === memoryId) {
+        if (fallbackViewerMemoryId) {
+          void openMemory(fallbackViewerMemoryId, updatedViewerMemoryIds);
+        } else {
+          closeMemoryViewer();
+        }
+      }
+    } catch (error) {
+      setMemories(previousMemories);
+      setSelectedMemory(previousSelectedMemory);
+      setViewerMemoryIds(previousViewerMemoryIds);
+      setTotalMemories(previousTotalMemories);
+
+      throw error;
     }
   }
 
@@ -798,6 +844,7 @@ function App() {
         memory={selectedMemory}
         onClose={closeMemoryViewer}
         onNext={() => openAdjacentMemory(1)}
+        onDelete={(memoryId) => deleteSelectedMemory(memoryId)}
         onPrevious={() => openAdjacentMemory(-1)}
         onToggleFavorite={(memoryId, nextFavorite) =>
           void toggleFavorite(memoryId, nextFavorite)

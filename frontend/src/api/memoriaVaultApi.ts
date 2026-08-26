@@ -124,6 +124,16 @@ export function removeMemoryFavorite(memoryId: string): Promise<Memory> {
   });
 }
 
+export function deleteMemory(memoryId: string): Promise<void> {
+  return request<void>(`/api/memories/${memoryId}`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ confirmPermanentDelete: true }),
+  });
+}
+
 export function prepareCompatibilityPlayback(
   memoryId: string,
 ): Promise<CompatibilityPlayback> {

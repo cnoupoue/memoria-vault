@@ -86,6 +86,56 @@ describe('MemoryViewer', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('requires confirmation before deleting a memory', async () => {
+    const onDelete = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <MemoryViewer
+        error={null}
+        isLoading={false}
+        memory={buildMemoryDetail()}
+        onClose={vi.fn()}
+        onDelete={onDelete}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(screen.getByText('Delete this memory?')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'This will permanently delete the original file from your computer. This action cannot be undone.',
+      ),
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Delete permanently' }),
+    );
+
+    expect(onDelete).toHaveBeenCalledWith('memory-1');
+  });
+
+  it('does not delete when confirmation is canceled', async () => {
+    const onDelete = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <MemoryViewer
+        error={null}
+        isLoading={false}
+        memory={buildMemoryDetail()}
+        onClose={vi.fn()}
+        onDelete={onDelete}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(onDelete).not.toHaveBeenCalled();
+    expect(screen.queryByText('Delete this memory?')).not.toBeInTheDocument();
+  });
+
   it('shares the original file through the platform service', async () => {
     shareOriginalFileMock.mockResolvedValue({
       opened: true,

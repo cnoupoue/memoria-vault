@@ -56,6 +56,40 @@ public class SecureMemoryPathResolver {
     return resolve(sourceId, storedMediaPath);
   }
 
+  public ResolvedMemoryPath resolveForDeletion(String sourceId, String storedMediaPath) {
+    MemorySource source =
+        memorySourceRepository
+            .findById(sourceId)
+            .orElseThrow(
+                () ->
+                    new MediaStreamingException(MediaStreamingFailureCategory.SOURCE_UNAVAILABLE));
+
+    Path sourceRootPath;
+
+    try {
+      sourceRootPath = Path.of(source.getRootPath()).toRealPath();
+    } catch (IOException exception) {
+      throw new MediaStreamingException(
+          MediaStreamingFailureCategory.SOURCE_UNAVAILABLE, exception);
+    }
+
+    Path storedPath = Path.of(storedMediaPath);
+
+    Optional<Path> existingPath = resolveRebasedPath(storedPath, sourceRootPath);
+
+    if (existingPath.isEmpty()) {
+      existingPath = resolveDirectPath(storedPath, sourceRootPath);
+    }
+
+    if (existingPath.isPresent()) {
+      return new ResolvedMemoryPath(existingPath.get(), true);
+    }
+
+    Path expectedPath = resolveExpectedPath(storedPath, sourceRootPath);
+
+    return new ResolvedMemoryPath(expectedPath, false);
+  }
+
   private Optional<Path> resolveDirectPath(Path storedPath, Path sourceRootPath) {
     try {
       Path mediaPath = storedPath.toRealPath();
@@ -117,4 +151,25 @@ public class SecureMemoryPathResolver {
 
     return Optional.of(mediaPath);
   }
+
+  private Path resolveExpectedPath(Path storedPath, Path sourceRootPath) {
+    Optional<Path> relativePath = toSnapchatExportRelativePath(storedPath);
+
+    if (relativePath.isEmpty() && !storedPath.isAbsolute()) {
+      relativePath = Optional.of(storedPath.normalize());
+    }
+
+    Path candidate =
+        relativePath
+            .map(path -> sourceRootPath.resolve(path).normalize())
+            .orElseGet(() -> storedPath.toAbsolutePath().normalize());
+
+    if (!candidate.startsWith(sourceRootPath)) {
+      throw new MediaStreamingException(MediaStreamingFailureCategory.MEDIA_PATH_REJECTED);
+    }
+
+    return candidate;
+  }
+
+  public record ResolvedMemoryPath(Path path, boolean exists) {}
 }

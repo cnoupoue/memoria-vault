@@ -61,6 +61,7 @@ class CompatibilityPlaybackServiceTest {
             path -> {
               assertThat(path.getParent()).isEqualTo(playbackDirectory);
               assertThat(path.getFileName().toString()).endsWith(".mp4");
+              assertThat(path.getFileName().toString()).startsWith("memory-1-");
               assertThat(path.getFileName().toString()).doesNotContain("original");
             });
   }

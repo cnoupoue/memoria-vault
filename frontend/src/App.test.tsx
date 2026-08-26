@@ -19,6 +19,7 @@ import App from './App';
 vi.mock('./api/memoriaVaultApi', () => ({
   addMemoryFavorite: vi.fn(),
   createMemorySource: vi.fn(),
+  deleteMemory: vi.fn(),
   deleteMemorySource: vi.fn(),
   exportMemorySourceFavoritesBackup: vi.fn(),
   getFavoriteMemories: vi.fn(),
@@ -45,6 +46,7 @@ vi.mock('./api/memoriaVaultApi', () => ({
 import {
   addMemoryFavorite,
   createMemorySource,
+  deleteMemory,
   getFavoriteMemories,
   getTodayFlashbacks,
   getDiagnostics,
@@ -61,6 +63,7 @@ import {
 
 const addMemoryFavoriteMock = vi.mocked(addMemoryFavorite);
 const createMemorySourceMock = vi.mocked(createMemorySource);
+const deleteMemoryMock = vi.mocked(deleteMemory);
 const getFavoriteMemoriesMock = vi.mocked(getFavoriteMemories);
 const getTodayFlashbacksMock = vi.mocked(getTodayFlashbacks);
 const getDiagnosticsMock = vi.mocked(getDiagnostics);
@@ -144,6 +147,7 @@ beforeEach(() => {
     isFavorite: false,
     favoritedAt: null,
   });
+  deleteMemoryMock.mockResolvedValue(undefined);
   getTimelineMonthsMock.mockResolvedValue([]);
   getTimelineYearsMock.mockResolvedValue([]);
   selectMemorySourceFolderMock.mockResolvedValue({
@@ -856,6 +860,71 @@ describe('App viewer navigation', () => {
       expect(viewer().getByText('2026-02-02')).toBeInTheDocument();
     });
     expect(viewer().queryByText('2026-02-01')).not.toBeInTheDocument();
+  });
+
+  it('deleting a memory removes it from the current list and opens the next memory', async () => {
+    const user = userEvent.setup();
+    const first = buildMemory({ id: 'memory-first', capturedAt: '2026-01-01' });
+    const second = buildMemory({
+      id: 'memory-second',
+      capturedAt: '2026-01-02',
+    });
+    const memories = [first, second];
+    const remainingMemories = [second];
+
+    mockArchiveMemories(memories);
+    deleteMemoryMock.mockImplementation(async () => {
+      mockArchiveMemories(remainingMemories);
+    });
+
+    render(<App />);
+
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Open Memory from 2026-01-01',
+      }),
+    );
+    await user.click(await viewer().findByRole('button', { name: 'Delete' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Delete permanently' }),
+    );
+
+    expect(deleteMemoryMock).toHaveBeenCalledWith('memory-first');
+    await waitFor(() => {
+      expect(viewer().getByText('2026-01-02')).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole('button', { name: 'Open Memory from 2026-01-01' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('closes the viewer after deleting the only available memory', async () => {
+    const user = userEvent.setup();
+    const memory = buildMemory({ id: 'memory-only', capturedAt: '2026-01-01' });
+
+    mockArchiveMemories([memory]);
+    deleteMemoryMock.mockImplementation(async () => {
+      mockArchiveMemories([]);
+    });
+
+    render(<App />);
+
+    await user.click(
+      await screen.findByRole('button', {
+        name: 'Open Memory from 2026-01-01',
+      }),
+    );
+    await user.click(await viewer().findByRole('button', { name: 'Delete' }));
+    await user.click(
+      screen.getByRole('button', { name: 'Delete permanently' }),
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole('button', { name: 'Open Memory from 2026-01-01' }),
+    ).not.toBeInTheDocument();
   });
 
   it('keeps Flashbacks navigation inside the current flashback results', async () => {

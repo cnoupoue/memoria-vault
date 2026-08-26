@@ -894,6 +894,14 @@ a:focus-visible {
   background: rgb(255 255 255 / 15%);
 }
 
+.memory-viewer-delete-button {
+  color: #ffd8d8;
+}
+
+.memory-viewer-delete-button:hover {
+  background: rgb(163 58 58 / 28%);
+}
+
 .memory-viewer-action-status {
   color: #dfdfeb;
 }
@@ -1300,6 +1308,11 @@ a:focus-visible {
 .confirmation-dialog p {
   color: var(--muted);
   line-height: 1.5;
+}
+
+.confirmation-dialog .destructive-error {
+  color: #a33a3a;
+  font-weight: 700;
 }
 
 .restore-preview-list {

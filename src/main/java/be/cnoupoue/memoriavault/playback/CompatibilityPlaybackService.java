@@ -203,7 +203,8 @@ public class CompatibilityPlaybackService {
   }
 
   private Path compatibilityPath(SnapMemory memory, Path originalPath) {
-    return playbackDirectory.resolve(cacheKey(memory, originalPath) + ".mp4");
+    return playbackDirectory.resolve(
+        memory.getId() + "-" + cacheKey(memory, originalPath) + ".mp4");
   }
 
   protected Path compatibilityPathForTest(String memoryId) {

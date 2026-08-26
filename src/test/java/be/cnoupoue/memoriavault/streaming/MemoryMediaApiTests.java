@@ -1,7 +1,9 @@
 package be.cnoupoue.memoriavault.streaming;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.head;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -24,6 +26,7 @@ import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -267,6 +270,44 @@ class MemoryMediaApiTests {
             jsonPath("$.message")
                 .value("The requested file is outside the configured memory source."))
         .andExpect(jsonPath("$.message", not(containsString(outsideFile.toString()))));
+  }
+
+  @Test
+  void deleteMemoryRequiresConfirmationBody() throws Exception {
+    Path sourceRoot = Files.createDirectory(temporaryDirectory.resolve("delete-confirm-source"));
+    Path memories = Files.createDirectory(sourceRoot.resolve("memories"));
+    Path mediaFile = Files.writeString(memories.resolve("2020-06-10_memory-main.jpg"), "image");
+
+    MemorySource source = saveSource("source-delete-confirm", sourceRoot);
+    saveMemory("memory-delete-confirm", source.getId(), mediaFile);
+
+    mockMvc
+        .perform(delete("/api/memories/{id}", "memory-delete-confirm"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.code").value("DELETE_CONFIRMATION_REQUIRED"));
+
+    assertThat(mediaFile).exists();
+    assertThat(snapMemoryRepository.findById("memory-delete-confirm")).isPresent();
+  }
+
+  @Test
+  void confirmedDeleteRemovesOriginalFileAndIndexedMemory() throws Exception {
+    Path sourceRoot = Files.createDirectory(temporaryDirectory.resolve("delete-source"));
+    Path memories = Files.createDirectory(sourceRoot.resolve("memories"));
+    Path mediaFile = Files.writeString(memories.resolve("2020-06-10_memory-main.jpg"), "image");
+
+    MemorySource source = saveSource("source-delete", sourceRoot);
+    saveMemory("memory-delete", source.getId(), mediaFile);
+
+    mockMvc
+        .perform(
+            delete("/api/memories/{id}", "memory-delete")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"confirmPermanentDelete\":true}"))
+        .andExpect(status().isNoContent());
+
+    assertThat(mediaFile).doesNotExist();
+    assertThat(snapMemoryRepository.findById("memory-delete")).isEmpty();
   }
 
   private MemorySource saveSource(String id, Path rootPath) {

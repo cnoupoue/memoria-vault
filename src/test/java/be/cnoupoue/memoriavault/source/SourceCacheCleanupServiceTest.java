@@ -13,14 +13,20 @@ class SourceCacheCleanupServiceTest {
   @TempDir private Path temporaryDirectory;
 
   @Test
-  void deletesExistingThumbnailsAndIgnoresAlreadyMissingCacheFiles() throws Exception {
+  void deletesExistingMemoryCachesAndIgnoresAlreadyMissingCacheFiles() throws Exception {
     Path thumbnailDirectory = Files.createDirectory(temporaryDirectory.resolve("thumbnails"));
     Path thumbnail = Files.writeString(thumbnailDirectory.resolve("memory-1.jpg"), "thumbnail");
+    Path playbackDirectory = Files.createDirectory(temporaryDirectory.resolve("playback"));
+    Path playback = Files.writeString(playbackDirectory.resolve("memory-1-abcdef.mp4"), "video");
+    Path otherPlayback =
+        Files.writeString(playbackDirectory.resolve("memory-2-abcdef.mp4"), "other video");
     SourceCacheCleanupService service =
-        new SourceCacheCleanupService(thumbnailDirectory.toString());
+        new SourceCacheCleanupService(thumbnailDirectory.toString(), playbackDirectory.toString());
 
     service.deleteApplicationCaches("source-1", List.of("memory-1", "memory-missing"));
 
     assertThat(thumbnail).doesNotExist();
+    assertThat(playback).doesNotExist();
+    assertThat(otherPlayback).exists();
   }
 }
