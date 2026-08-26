@@ -446,6 +446,21 @@ function App() {
     );
   }
 
+  function handleApplicationDataReset() {
+    setSources([]);
+    setYears([]);
+    setMonths([]);
+    setMemories([]);
+    setSelectedYear(undefined);
+    setSelectedMonth(undefined);
+    setCurrentPage(0);
+    setTotalMemories(0);
+    setHasMoreMemories(false);
+    closeMemoryViewer();
+    setArchiveRefreshVersion((currentVersion) => currentVersion + 1);
+    setActiveView('archive');
+  }
+
   const pageTitle =
     selectedYear === undefined
       ? 'All Memories'
@@ -748,6 +763,7 @@ function App() {
             onSourceCreated={handleSourceCreated}
             onSourceDeleted={handleSourceDeleted}
             onSourceScanned={refreshArchiveData}
+            onApplicationDataReset={handleApplicationDataReset}
           />
         )}
 

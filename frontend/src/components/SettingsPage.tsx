@@ -16,6 +16,7 @@ import {
   getMemorySourceAvailability,
   getMemorySources,
   previewMemorySourceFavoritesRestore,
+  resetApplicationData,
   restoreMemorySourceFavoritesBackup,
   selectMemorySourceFolder,
   MemoriaVaultApiError,
@@ -293,6 +294,7 @@ type SettingsPageProps = {
   onSourceCreated?: (source: MemorySource) => void;
   onSourceDeleted?: (sourceId: string) => void;
   onSourceScanned: () => void;
+  onApplicationDataReset?: () => void;
 };
 
 export function SettingsPage({
@@ -302,6 +304,7 @@ export function SettingsPage({
   onSourceCreated,
   onSourceDeleted,
   onSourceScanned,
+  onApplicationDataReset,
 }: SettingsPageProps) {
   const [sources, setSources] = useState<MemorySource[]>([]);
   const [name, setName] = useState('');
@@ -345,6 +348,9 @@ export function SettingsPage({
   const [copyDiagnosticsStatus, setCopyDiagnosticsStatus] = useState<
     'idle' | 'copied' | 'failed'
   >('idle');
+  const [isResetConfirmationOpen, setIsResetConfirmationOpen] = useState(false);
+  const [isResettingApplicationData, setIsResettingApplicationData] =
+    useState(false);
 
   const pollingIntervalRef = useRef<number | null>(null);
   const favoritesBackupInFlightRef = useRef(false);
@@ -722,6 +728,16 @@ export function SettingsPage({
     }
   }
 
+  async function handleBackupAllFavorites() {
+    const favoriteSources = sources.filter(
+      (source) => source.favoriteCount > 0,
+    );
+
+    for (const source of favoriteSources) {
+      await handleBackupFavorites(source);
+    }
+  }
+
   function handleChooseFavoritesBackup(source: MemorySource) {
     setImportSource(source);
     setError(null);
@@ -852,6 +868,42 @@ export function SettingsPage({
       setCopyDiagnosticsStatus('failed');
     }
   }
+
+  async function handleResetApplicationData() {
+    setIsResettingApplicationData(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      const result = await resetApplicationData();
+
+      window.localStorage.clear();
+      stopPolling();
+      setSources([]);
+      setScanJob(null);
+      setPendingRescanSource(null);
+      setRestorePreview(null);
+      setRestoreSummary(null);
+      setDiagnostics(null);
+      setIsResetConfirmationOpen(false);
+      setSuccessMessage(result.message);
+      await loadDiagnostics();
+      onApplicationDataReset?.();
+    } catch (resetError) {
+      setError(
+        resetError instanceof MemoriaVaultApiError
+          ? resetError.message
+          : 'Application data could not be reset. Try again after restarting Memoria Vault.',
+      );
+    } finally {
+      setIsResettingApplicationData(false);
+    }
+  }
+
+  const favoriteCount = sources.reduce(
+    (total, source) => total + source.favoriteCount,
+    0,
+  );
 
   return (
     <section className="content">
@@ -1062,6 +1114,59 @@ export function SettingsPage({
                 type="button"
               >
                 Got it
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {isResetConfirmationOpen && (
+        <div aria-modal="true" className="confirmation-backdrop" role="dialog">
+          <section className="confirmation-dialog destructive-dialog">
+            <h3>Reset Memoria Vault?</h3>
+            <p>
+              This will remove all sources, indexes, favorites, cached previews,
+              and local application data.
+            </p>
+            <p>Your original photos and videos will not be deleted.</p>
+            <p>This action cannot be undone.</p>
+            {favoriteCount > 0 && (
+              <p>
+                You currently have {favoriteCount.toLocaleString()} favorite
+                {favoriteCount === 1 ? '' : 's'}. Export a favorites backup
+                first if you want to restore those marks later.
+              </p>
+            )}
+            <div className="confirmation-actions">
+              <button
+                className="secondary-button"
+                disabled={isResettingApplicationData}
+                onClick={() => setIsResetConfirmationOpen(false)}
+                type="button"
+              >
+                Cancel
+              </button>
+              {favoriteCount > 0 && (
+                <button
+                  className="secondary-button"
+                  disabled={isBackingUpFavorites || isResettingApplicationData}
+                  onClick={() => void handleBackupAllFavorites()}
+                  type="button"
+                >
+                  {isBackingUpFavorites
+                    ? 'Exporting…'
+                    : 'Export favorites first'}
+                </button>
+              )}
+              <button
+                className="danger-button"
+                disabled={isResettingApplicationData}
+                onClick={() => void handleResetApplicationData()}
+                type="button"
+              >
+                {isResettingApplicationData
+                  ? 'Resetting…'
+                  : 'Reset application data'}
               </button>
             </div>
           </section>
@@ -1419,6 +1524,27 @@ export function SettingsPage({
             </div>
           </>
         )}
+      </section>
+
+      <section className="settings-reset-section">
+        <div>
+          <h3>Reset Memoria Vault</h3>
+          <p>
+            Remove local indexes, sources, favorites, and cached previews while
+            keeping original media files untouched.
+          </p>
+        </div>
+        <button
+          className="reset-link-button"
+          onClick={() => {
+            setError(null);
+            setSuccessMessage(null);
+            setIsResetConfirmationOpen(true);
+          }}
+          type="button"
+        >
+          Reset application data
+        </button>
       </section>
     </section>
   );

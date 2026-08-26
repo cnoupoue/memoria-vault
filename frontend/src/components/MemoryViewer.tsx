@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import {
+  MemoriaVaultApiError,
   openOriginalFile,
   prepareCompatibilityPlayback,
+  shareOriginalFile,
 } from '../api/memoriaVaultApi';
 import type { MemoryDetail } from '../api/types';
 import {
@@ -252,11 +254,34 @@ export function MemoryViewer({
         memoryId,
         openOriginalStatus: 'Opened in your default media player.',
       }));
-    } catch {
+    } catch (error) {
       setPlaybackState((current) => ({
         ...current,
         memoryId,
-        openOriginalStatus: 'The original file could not be opened locally.',
+        openOriginalStatus: getOriginalFileActionErrorMessage(error),
+      }));
+    }
+  }
+
+  async function handleShareOriginal(memoryId: string) {
+    setPlaybackState((current) => ({
+      ...current,
+      memoryId,
+      openOriginalStatus: null,
+    }));
+
+    try {
+      await shareOriginalFile(memoryId);
+      setPlaybackState((current) => ({
+        ...current,
+        memoryId,
+        openOriginalStatus: 'The original file is ready to share.',
+      }));
+    } catch (error) {
+      setPlaybackState((current) => ({
+        ...current,
+        memoryId,
+        openOriginalStatus: getOriginalFileActionErrorMessage(error),
       }));
     }
   }
@@ -355,7 +380,6 @@ export function MemoryViewer({
                         Open original file
                       </button>
                     )}
-                  {openOriginalStatus && <span>{openOriginalStatus}</span>}
                 </div>
               ) : memory.mediaType === 'IMAGE' ? (
                 <img
@@ -414,6 +438,22 @@ export function MemoryViewer({
                   {' · '}
                   {(memory.fileSizeBytes / 1024 / 1024).toFixed(1)} MB
                 </span>
+                {openOriginalStatus && (
+                  <span className="memory-viewer-action-status">
+                    {openOriginalStatus}
+                  </span>
+                )}
+              </div>
+              <div className="memory-viewer-actions">
+                <button
+                  className="memory-viewer-action-button"
+                  onClick={() => void handleShareOriginal(memory.id)}
+                  title="Share original file"
+                  type="button"
+                >
+                  <span aria-hidden="true">↗</span>
+                  <span>Share</span>
+                </button>
               </div>
             </footer>
           </>
@@ -480,4 +520,12 @@ function canOpenOriginal(category: PlaybackFailureCategory) {
     category === 'VIDEO_FORMAT_UNSUPPORTED' ||
     category === 'BROWSER_MEDIA_ERROR'
   );
+}
+
+function getOriginalFileActionErrorMessage(error: unknown) {
+  if (error instanceof MemoriaVaultApiError) {
+    return error.message;
+  }
+
+  return 'The original file cannot be found or opened.';
 }

@@ -30,4 +30,11 @@ public class PlaybackController {
 
     return new OriginalFileOpenResponse(true, "The original file was opened locally.");
   }
+
+  @PostMapping("/{id}/share-original")
+  public OriginalFileOpenResponse shareOriginal(@PathVariable String id) {
+    originalFileOpenService.shareOriginal(id);
+
+    return new OriginalFileOpenResponse(true, "The original file is ready to share.");
+  }
 }

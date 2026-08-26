@@ -7,18 +7,42 @@ import {
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { prepareCompatibilityPlayback } from '../api/memoriaVaultApi';
+import {
+  MemoriaVaultApiError,
+  prepareCompatibilityPlayback,
+  shareOriginalFile,
+} from '../api/memoriaVaultApi';
 import type { MemoryDetail } from '../api/types';
 import { MemoryViewer } from './MemoryViewer';
 
 vi.mock('../api/memoriaVaultApi', () => ({
+  MemoriaVaultApiError: class MemoriaVaultApiError extends Error {
+    status: number;
+    code: string;
+    timestamp: string;
+
+    constructor(error: {
+      status: number;
+      code: string;
+      message: string;
+      timestamp: string;
+    }) {
+      super(error.message);
+      this.name = 'MemoriaVaultApiError';
+      this.status = error.status;
+      this.code = error.code;
+      this.timestamp = error.timestamp;
+    }
+  },
   openOriginalFile: vi.fn(),
   prepareCompatibilityPlayback: vi.fn(),
+  shareOriginalFile: vi.fn(),
 }));
 
 const prepareCompatibilityPlaybackMock = vi.mocked(
   prepareCompatibilityPlayback,
 );
+const shareOriginalFileMock = vi.mocked(shareOriginalFile);
 
 function buildMemoryDetail(
   overrides: Partial<MemoryDetail> = {},
@@ -46,6 +70,71 @@ afterEach(() => {
 });
 
 describe('MemoryViewer', () => {
+  it('displays share without a separate open file location action', () => {
+    render(
+      <MemoryViewer
+        error={null}
+        isLoading={false}
+        memory={buildMemoryDetail()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Share' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Open file location' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shares the original file through the platform service', async () => {
+    shareOriginalFileMock.mockResolvedValue({
+      opened: true,
+      message: 'The original file is ready to share.',
+    });
+
+    render(
+      <MemoryViewer
+        error={null}
+        isLoading={false}
+        memory={buildMemoryDetail()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Share' }));
+
+    expect(shareOriginalFileMock).toHaveBeenCalledWith('memory-1');
+    expect(
+      await screen.findByText('The original file is ready to share.'),
+    ).toBeInTheDocument();
+  });
+
+  it('shows a friendly message when the original file action fails', async () => {
+    shareOriginalFileMock.mockRejectedValue(
+      new MemoriaVaultApiError({
+        status: 422,
+        code: 'ORIGINAL_FILE_MISSING',
+        message: 'The original file cannot be found.',
+        timestamp: '2026-08-03T00:00:00Z',
+      }),
+    );
+
+    render(
+      <MemoryViewer
+        error={null}
+        isLoading={false}
+        memory={buildMemoryDetail()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Share' }));
+
+    expect(
+      await screen.findByText('The original file cannot be found.'),
+    ).toBeInTheDocument();
+  });
+
   it('renders previous and next controls with disabled boundary state', () => {
     render(
       <MemoryViewer
